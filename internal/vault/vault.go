@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 type Store struct {
@@ -51,6 +52,16 @@ func Open(dir, passphrase string) (*Store, error) {
 		return nil, err
 	}
 	return &Store{path: Path(dir), key: key, params: gotP, secrets: secrets}, nil
+}
+
+// Keys returns the secret keys (not values), sorted.
+func (s *Store) Keys() []string {
+	out := make([]string, 0, len(s.secrets))
+	for k := range s.secrets {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (s *Store) Get(key string) (string, bool) { v, ok := s.secrets[key]; return v, ok }
