@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/tanzid64/tui-db-manager/internal/config"
@@ -29,9 +30,45 @@ func buildBackend(ctx context.Context, sc config.StorageConfig, v *vault.Store) 
 			return nil, err
 		}
 		return storage.NewMaskingBackend(be, secret), nil
+	case "gdrive":
+		jsonCreds, err := resolveGDriveCredentials(sc, v)
+		if err != nil {
+			return nil, err
+		}
+		be, err := storage.NewGDrive(ctx, storage.GDriveOptions{
+			CredentialsJSON: []byte(jsonCreds), FolderID: sc.FolderID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return storage.NewMaskingBackend(be, extractPrivateKey(jsonCreds)), nil
 	default:
 		return nil, fmt.Errorf("storage type %q not supported", sc.Type)
 	}
+}
+
+func resolveGDriveCredentials(sc config.StorageConfig, v *vault.Store) (string, error) {
+	var lookup func(string) (string, bool)
+	if v != nil {
+		lookup = v.Get
+	}
+	ref := sc.CredentialsRef
+	if ref == "" {
+		ref = "storage/" + sc.Name + "/credentials"
+	}
+	return secretref.Resolve(ref, lookup)
+}
+
+// extractPrivateKey pulls the private_key value out of a service-account JSON so
+// it can be masked from errors. Returns "" if not found (masking then no-ops).
+func extractPrivateKey(saJSON string) string {
+	var m struct {
+		PrivateKey string `json:"private_key"`
+	}
+	if err := json.Unmarshal([]byte(saJSON), &m); err != nil {
+		return ""
+	}
+	return m.PrivateKey
 }
 
 // resolveStorageSecret resolves an S3 secret key from the storage's SecretKeyRef
