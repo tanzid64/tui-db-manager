@@ -59,6 +59,12 @@ type StorageConfig struct {
 	// SecretKeyRef is "env:NAME", "file:/path", or empty (meaning the vault key
 	// "storage/<name>/secret_key"). The raw secret key is never stored here.
 	SecretKeyRef string `yaml:"secret_key_ref,omitempty"`
+
+	// Google Drive backend (service account).
+	FolderID string `yaml:"folder_id,omitempty"` // destination folder (My Drive or Shared Drive)
+	// CredentialsRef is "env:NAME", "file:/path", or empty (meaning the vault key
+	// "storage/<name>/credentials"). The raw service-account JSON is never stored here.
+	CredentialsRef string `yaml:"credentials_ref,omitempty"`
 }
 
 func fileName(dir string) string { return filepath.Join(dir, "config.yaml") }
