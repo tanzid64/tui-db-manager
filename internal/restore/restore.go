@@ -93,7 +93,7 @@ func Run(ctx context.Context, d Deps, jobName, atKey, toDatabase string, confirm
 	}
 	defer rc.Close()
 	if err := eng.Restore(ctx, conn, rc); err != nil {
-		return fmt.Errorf("restore: %w", err)
+		return fmt.Errorf("restore: %w", logutil.MaskError(err, pw))
 	}
 	d.Log.Infof("restore complete")
 	return nil

@@ -1,6 +1,7 @@
 package logutil
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -48,6 +49,31 @@ func (l *Logger) logf(level Level, prefix, format string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	fmt.Fprintf(l.w, "%s %s\n", prefix, l.mask(fmt.Sprintf(format, args...)))
+}
+
+// MaskError returns err with every occurrence of each secret literal replaced
+// by *** in its message, so a secret that reaches any error sink (including
+// ones that bypass the logger, such as the CLI's top-level os.Stderr print) is
+// scrubbed. A nil error or empty secret passes through unchanged.
+func MaskError(err error, secrets ...string) error {
+	if err == nil {
+		return err
+	}
+	msg := err.Error()
+	changed := false
+	for _, s := range secrets {
+		if s == "" {
+			continue
+		}
+		if strings.Contains(msg, s) {
+			msg = strings.ReplaceAll(msg, s, "***")
+			changed = true
+		}
+	}
+	if !changed {
+		return err
+	}
+	return errors.New(msg)
 }
 
 func (l *Logger) Debugf(f string, a ...any) { l.logf(LevelDebug, "[debug]", f, a...) }

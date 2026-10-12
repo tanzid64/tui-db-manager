@@ -2,7 +2,9 @@ package restore
 
 import (
 	"context"
+	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 type recordEngine struct {
 	restoredInto string
 	restoredPath string
+	restoreErr   error
 }
 
 func (e *recordEngine) Name() string                                  { return "fake" }
@@ -26,7 +29,7 @@ func (e *recordEngine) Restore(_ context.Context, c db.Conn, r io.Reader) error 
 	io.ReadAll(r)
 	e.restoredInto = c.Database
 	e.restoredPath = c.Path
-	return nil
+	return e.restoreErr
 }
 
 func TestLatestKey(t *testing.T) {
@@ -85,6 +88,17 @@ func TestRunToTargetOverridesPathForSQLite(t *testing.T) {
 	}
 	if eng.restoredInto != "" {
 		t.Fatalf("Conn.Database should remain empty for sqlite, got %q", eng.restoredInto)
+	}
+}
+
+func TestRunMasksSecretInRestoreError(t *testing.T) {
+	eng := &recordEngine{restoreErr: errors.New("restore failed for password topsecret9")}
+	d := baseDeps(t, eng)
+	d.ResolvePassword = func(config.Job) (string, error) { return "topsecret9", nil }
+	d.Backend().Put(context.Background(), "main/x.sql", io.NopCloser(stringReader("DATA")), -1)
+	err := Run(context.Background(), d, "main", "main/x.sql", "", true)
+	if err == nil || strings.Contains(err.Error(), "topsecret9") {
+		t.Fatalf("password must be scrubbed from restore error, got %v", err)
 	}
 }
 

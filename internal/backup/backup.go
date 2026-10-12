@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -11,6 +12,11 @@ import (
 	"github.com/tanzid64/tui-db-manager/internal/logutil"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
 )
+
+// errPutAbort is injected into the dump writer when the storage backend fails
+// before draining the pipe, so the dump goroutine unblocks and we can tell a
+// storage failure apart from a genuine dump failure.
+var errPutAbort = errors.New("backup aborted: storage write failed")
 
 type Deps struct {
 	Cfg             *config.Config
@@ -69,17 +75,38 @@ func Run(ctx context.Context, d Deps, jobName string) (storage.Object, error) {
 	d.Log.Infof("starting backup of job %q -> %s", job.Name, key)
 
 	pr, pw2 := io.Pipe()
+	dumpErrCh := make(chan error, 1)
 	go func() {
 		err := eng.Dump(ctx, conn, pw2)
+		// Propagate a dump failure to the reader so Put fails rather than
+		// storing a truncated backup.
 		pw2.CloseWithError(err)
+		dumpErrCh <- err
 	}()
 
-	if err := be.Put(ctx, key, pr, -1); err != nil {
-		return storage.Object{}, fmt.Errorf("upload: %w", err)
+	putErr := be.Put(ctx, key, pr, -1)
+	if putErr != nil {
+		// Put failed on its own (e.g. mkdir/write). Unblock the dump goroutine
+		// with a distinct sentinel so we don't misreport a storage failure as a
+		// dump failure, and so the goroutine (and its subprocess) can exit.
+		pr.CloseWithError(errPutAbort)
 	}
+	dumpErr := <-dumpErrCh
+
+	switch {
+	case putErr != nil && errors.Is(dumpErr, errPutAbort):
+		// Storage failed first; the dump was aborted as a consequence.
+		return storage.Object{}, fmt.Errorf("upload: %w", logutil.MaskError(putErr, pw))
+	case dumpErr != nil:
+		// The dump itself failed (its error also surfaced to Put as the read error).
+		return storage.Object{}, fmt.Errorf("dump: %w", logutil.MaskError(dumpErr, pw))
+	case putErr != nil:
+		return storage.Object{}, fmt.Errorf("upload: %w", logutil.MaskError(putErr, pw))
+	}
+
 	obj, err := be.Stat(ctx, key)
 	if err != nil {
-		return storage.Object{}, err
+		return storage.Object{}, logutil.MaskError(err, pw)
 	}
 	d.Log.Infof("backup complete: %s (%d bytes)", key, obj.Size)
 	return obj, nil
