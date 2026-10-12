@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/tanzid64/tui-db-manager/internal/config"
@@ -8,15 +9,44 @@ import (
 	"github.com/tanzid64/tui-db-manager/internal/secretref"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
 	"github.com/tanzid64/tui-db-manager/internal/vault"
+	"github.com/spf13/cobra"
 )
 
-func buildBackend(sc config.StorageConfig) (storage.Backend, error) {
+func buildBackend(ctx context.Context, sc config.StorageConfig, v *vault.Store) (storage.Backend, error) {
 	switch sc.Type {
 	case "local":
 		return storage.NewLocal(sc.Path), nil
+	case "s3":
+		secret, err := resolveStorageSecret(sc, v)
+		if err != nil {
+			return nil, err
+		}
+		return storage.NewS3(ctx, storage.S3Options{
+			Bucket: sc.Bucket, Region: sc.Region, Endpoint: sc.Endpoint, Prefix: sc.Prefix,
+			AccessKeyID: sc.AccessKeyID, SecretKey: secret, ForcePathStyle: sc.ForcePathStyle,
+		})
 	default:
-		return nil, fmt.Errorf("storage type %q not supported yet", sc.Type)
+		return nil, fmt.Errorf("storage type %q not supported", sc.Type)
 	}
+}
+
+// resolveStorageSecret resolves an S3 secret key from the storage's SecretKeyRef
+// (env:/file:/vault), defaulting to the vault key "storage/<name>/secret_key".
+func resolveStorageSecret(sc config.StorageConfig, v *vault.Store) (string, error) {
+	var lookup func(string) (string, bool)
+	if v != nil {
+		lookup = v.Get
+	}
+	ref := sc.SecretKeyRef
+	if ref == "" {
+		ref = "storage/" + sc.Name + "/secret_key"
+	}
+	return secretref.Resolve(ref, lookup)
+}
+
+func passFileOf(cmd *cobra.Command) string {
+	pf, _ := cmd.Flags().GetString("passphrase-file")
+	return pf
 }
 
 func engineResolver() func(string) (db.Engine, bool) {

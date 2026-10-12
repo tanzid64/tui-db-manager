@@ -32,7 +32,7 @@ func newRestoreCmd() *cobra.Command {
 			if !ok {
 				return errUnknownStorage(job.Storage)
 			}
-			be, err := buildBackend(sc)
+			be, err := buildBackend(cmd.Context(), sc, v)
 			if err != nil {
 				return err
 			}

@@ -22,7 +22,9 @@ func newListCmd() *cobra.Command {
 			if !ok {
 				return errUnknownStorage(job.Storage)
 			}
-			be, err := buildBackend(sc)
+			// A missing vault is fine if the storage uses an env:/file: secret ref.
+			v, _ := maybeOpenVault(app.dir, passFileOf(cmd), true)
+			be, err := buildBackend(cmd.Context(), sc, v)
 			if err != nil {
 				return err
 			}

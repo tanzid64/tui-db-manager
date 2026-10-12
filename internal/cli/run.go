@@ -27,7 +27,9 @@ func newRunCmd() *cobra.Command {
 			deps := backup.Deps{
 				Cfg:             app.cfg,
 				Engine:          engineResolver(),
-				Backend:         func(sc config.StorageConfig) (storage.Backend, error) { return buildBackend(sc) },
+				Backend: func(sc config.StorageConfig) (storage.Backend, error) {
+					return buildBackend(cmd.Context(), sc, v)
+				},
 				ResolvePassword: resolvePassword(v),
 				Now:             time.Now,
 				Log:             app.log,
