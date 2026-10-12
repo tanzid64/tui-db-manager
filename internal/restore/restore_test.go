@@ -12,7 +12,10 @@ import (
 	"github.com/tanzid64/tui-db-manager/internal/storage"
 )
 
-type recordEngine struct{ restoredInto string }
+type recordEngine struct {
+	restoredInto string
+	restoredPath string
+}
 
 func (e *recordEngine) Name() string                                  { return "fake" }
 func (e *recordEngine) DefaultPort() int                              { return 0 }
@@ -22,6 +25,7 @@ func (e *recordEngine) Dump(context.Context, db.Conn, io.Writer) error { return 
 func (e *recordEngine) Restore(_ context.Context, c db.Conn, r io.Reader) error {
 	io.ReadAll(r)
 	e.restoredInto = c.Database
+	e.restoredPath = c.Path
 	return nil
 }
 
@@ -54,6 +58,33 @@ func TestRunHonorsToTarget(t *testing.T) {
 	}
 	if eng.restoredInto != "otherdb" {
 		t.Fatalf("expected restore into otherdb, got %q", eng.restoredInto)
+	}
+}
+
+func TestRunToTargetOverridesPathForSQLite(t *testing.T) {
+	eng := &recordEngine{}
+	be := storage.NewLocal(t.TempDir())
+	cfg := &config.Config{
+		Version:  1,
+		Jobs:     []config.Job{{Name: "main", Engine: "sqlite", Storage: "local", Conn: config.Conn{Path: "/data/app.db"}}},
+		Storages: []config.StorageConfig{{Name: "local", Type: "local"}},
+	}
+	d := Deps{
+		Cfg:             cfg,
+		Engine:          func(string) (db.Engine, bool) { return eng, true },
+		Backend:         func() storage.Backend { return be },
+		ResolvePassword: func(config.Job) (string, error) { return "", nil },
+		Log:             logutil.New(io.Discard, logutil.LevelInfo),
+	}
+	be.Put(context.Background(), "main/x.sql", io.NopCloser(stringReader("DATA")), -1)
+	if err := Run(context.Background(), d, "main", "main/x.sql", "/tmp/restored.db", true); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if eng.restoredPath != "/tmp/restored.db" {
+		t.Fatalf("for a path-based engine, --to must override Conn.Path, got %q", eng.restoredPath)
+	}
+	if eng.restoredInto != "" {
+		t.Fatalf("Conn.Database should remain empty for sqlite, got %q", eng.restoredInto)
 	}
 }
 

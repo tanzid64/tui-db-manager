@@ -11,6 +11,14 @@ func NewRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.PersistentFlags().String("config", "", "config directory (default: OS config dir + /dbk)")
+	root.PersistentFlags().String("passphrase-file", "", "file containing the vault passphrase")
+	root.PersistentFlags().Bool("yes", false, "assume yes for confirmations")
+	root.PersistentFlags().Bool("json", false, "machine-readable output where supported")
 	root.AddCommand(newVersionCmd())
+	root.AddCommand(newInitCmd())
+	root.AddCommand(newRunCmd())
+	root.AddCommand(newRestoreCmd())
+	root.AddCommand(newListCmd())
+	root.AddCommand(newTestCmd())
 	return root
 }

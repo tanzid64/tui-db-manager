@@ -66,15 +66,27 @@ func Run(ctx context.Context, d Deps, jobName, atKey, toDatabase string, confirm
 	if pw != "" {
 		d.Log.Redact(pw)
 	}
+	// --to overrides the restore target. For path-based engines (sqlite) the
+	// target is the database file path; for server engines it is the database
+	// name. Using the wrong field would silently restore into the source.
 	target := job.Conn.Database
+	path := job.Conn.Path
 	if toDatabase != "" {
-		target = toDatabase
+		if path != "" {
+			path = toDatabase
+		} else {
+			target = toDatabase
+		}
 	}
 	conn := db.Conn{
 		Host: job.Conn.Host, Port: job.Conn.Port, User: job.Conn.User,
-		Password: pw, Database: target, Path: job.Conn.Path, TLS: job.Conn.TLS,
+		Password: pw, Database: target, Path: path, TLS: job.Conn.TLS,
 	}
-	d.Log.Infof("restoring %s into database %q", atKey, target)
+	dest := target
+	if path != "" {
+		dest = path
+	}
+	d.Log.Infof("restoring %s into %q", atKey, dest)
 	rc, err := be.Get(ctx, atKey)
 	if err != nil {
 		return err
