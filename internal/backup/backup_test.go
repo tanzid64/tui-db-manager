@@ -114,6 +114,37 @@ func (f *fakeEngine) Dump(_ context.Context, _ db.Conn, w io.Writer) error {
 }
 func (f *fakeEngine) Restore(context.Context, db.Conn, io.Reader) error { return nil }
 
+func TestRunAppliesRetention(t *testing.T) {
+	be := storage.NewLocal(t.TempDir())
+	ctx := context.Background()
+	be.Put(ctx, "main/main-20250101-000000.sql", readerOfB("old1"), 4)
+	be.Put(ctx, "main/main-20250102-000000.sql", readerOfB("old2"), 4)
+
+	cfg := &config.Config{
+		Version: 1,
+		Jobs: []config.Job{{Name: "main", Engine: "fake", Storage: "local",
+			Conn: config.Conn{Database: "app"}, Retention: config.Retention{KeepLast: 2}}},
+		Storages: []config.StorageConfig{{Name: "local", Type: "local"}},
+	}
+	d := Deps{
+		Cfg:             cfg,
+		Engine:          func(string) (db.Engine, bool) { return &fakeEngine{}, true },
+		Backend:         func(config.StorageConfig) (storage.Backend, error) { return be, nil },
+		ResolvePassword: func(config.Job) (string, error) { return "", nil },
+		Now:             func() time.Time { return time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC) },
+		Log:             logutil.New(io.Discard, logutil.LevelInfo),
+	}
+	if _, err := Run(ctx, d, "main"); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	objs, _ := be.List(ctx, "main/")
+	if len(objs) != 2 {
+		t.Fatalf("expected 2 backups after retention, got %d: %+v", len(objs), objs)
+	}
+}
+
+func readerOfB(s string) io.Reader { return bytes.NewReader([]byte(s)) }
+
 func TestBuildKey(t *testing.T) {
 	ts := time.Date(2026, 10, 12, 3, 4, 5, 0, time.UTC)
 	if got := BuildKey("main", ts, "sql"); got != "main/main-20261012-030405.sql" {

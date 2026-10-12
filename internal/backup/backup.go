@@ -10,6 +10,7 @@ import (
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
 	"github.com/tanzid64/tui-db-manager/internal/logutil"
+	"github.com/tanzid64/tui-db-manager/internal/retention"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
 )
 
@@ -109,5 +110,15 @@ func Run(ctx context.Context, d Deps, jobName string) (storage.Object, error) {
 		return storage.Object{}, logutil.MaskError(err, pw)
 	}
 	d.Log.Infof("backup complete: %s (%d bytes)", key, obj.Size)
+
+	if n := job.Retention.KeepLast; n > 0 {
+		deleted, rerr := retention.Apply(ctx, be, job.Name+"/", n)
+		if rerr != nil {
+			// Retention failure must not fail an otherwise-good backup; log and continue.
+			d.Log.Errorf("retention for job %q: %v", job.Name, logutil.MaskError(rerr, pw))
+		} else if len(deleted) > 0 {
+			d.Log.Infof("retention: pruned %d old backup(s) for job %q", len(deleted), job.Name)
+		}
+	}
 	return obj, nil
 }
