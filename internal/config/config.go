@@ -1,0 +1,102 @@
+package config
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
+)
+
+const CurrentVersion = 1
+
+type Config struct {
+	Version  int             `yaml:"version"`
+	Jobs     []Job           `yaml:"jobs"`
+	Storages []StorageConfig `yaml:"storages"`
+}
+
+type Job struct {
+	Name      string    `yaml:"name"`
+	Engine    string    `yaml:"engine"` // mysql|postgres|mongodb|sqlite
+	Conn      Conn      `yaml:"conn"`
+	Storage   string    `yaml:"storage"`
+	Retention Retention `yaml:"retention"`
+}
+
+type Conn struct {
+	Host     string `yaml:"host,omitempty"`
+	Port     int    `yaml:"port,omitempty"`
+	User     string `yaml:"user,omitempty"`
+	Database string `yaml:"database,omitempty"`
+	Path     string `yaml:"path,omitempty"` // sqlite file path
+	TLS      bool   `yaml:"tls,omitempty"`
+	// PasswordRef optionally resolves the password from "env:VAR" or "file:/path"
+	// instead of the vault. Empty means "look in the vault".
+	PasswordRef string `yaml:"password_ref,omitempty"`
+}
+
+type Retention struct {
+	KeepLast int `yaml:"keep_last,omitempty"`
+}
+
+type StorageConfig struct {
+	Name string `yaml:"name"`
+	Type string `yaml:"type"` // local (cloud types added in a later plan)
+	Path string `yaml:"path,omitempty"`
+}
+
+func fileName(dir string) string { return filepath.Join(dir, "config.yaml") }
+
+func Load(dir string) (*Config, error) {
+	b, err := os.ReadFile(fileName(dir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return &Config{Version: CurrentVersion}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var c Config
+	if err := yaml.Unmarshal(b, &c); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
+	}
+	if c.Version == 0 {
+		c.Version = CurrentVersion
+	}
+	return &c, nil
+}
+
+func Save(dir string, c *Config) error {
+	if c.Version == 0 {
+		c.Version = CurrentVersion
+	}
+	b, err := yaml.Marshal(c)
+	if err != nil {
+		return err
+	}
+	tmp := fileName(dir) + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, fileName(dir))
+}
+
+func (c *Config) Job(name string) (Job, bool) {
+	for _, j := range c.Jobs {
+		if j.Name == name {
+			return j, true
+		}
+	}
+	return Job{}, false
+}
+
+func (c *Config) Storage(name string) (StorageConfig, bool) {
+	for _, s := range c.Storages {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return StorageConfig{}, false
+}
