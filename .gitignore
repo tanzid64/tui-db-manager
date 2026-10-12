@@ -1,0 +1,17 @@
+# Binaries
+/dbk
+/dist/
+*.exe
+
+# Secrets / local config
+secrets.enc
+*.key
+.env
+
+# Go
+*.test
+*.out
+vendor/
+
+# OS
+.DS_Store
