@@ -66,3 +66,29 @@ that job (older ones are pruned from the storage after each successful run).
         storage: r2
         retention:
           keep_last: 7
+
+## Google Drive (service account)
+
+dbk uses a Google Cloud **service account** to back up to Google Drive — no
+interactive login, ideal for servers and cron.
+
+Setup:
+1. In Google Cloud Console, create a service account and a JSON key; enable the
+   Google Drive API for the project.
+2. Decide where backups go:
+   - **Shared Drive (recommended):** add the service account's email
+     (`...@...iam.gserviceaccount.com`) as a member with Content Manager access,
+     and copy the destination folder's ID from its URL.
+   - **My Drive folder:** share the folder with the service account's email
+     (Editor), and copy the folder ID. (Note: files are owned by the service
+     account and count against its quota; a Shared Drive avoids this.)
+3. Store the JSON key in the vault and configure the storage:
+
+        dbk secret set storage/gd/credentials --stdin < service-account.json
+
+        storages:
+          - name: gd
+            type: gdrive
+            folder_id: <destination-folder-id>
+
+   Or reference the file directly with `credentials_ref: file:/etc/dbk/sa.json`.
