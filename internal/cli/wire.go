@@ -21,10 +21,14 @@ func buildBackend(ctx context.Context, sc config.StorageConfig, v *vault.Store) 
 		if err != nil {
 			return nil, err
 		}
-		return storage.NewS3(ctx, storage.S3Options{
+		be, err := storage.NewS3(ctx, storage.S3Options{
 			Bucket: sc.Bucket, Region: sc.Region, Endpoint: sc.Endpoint, Prefix: sc.Prefix,
 			AccessKeyID: sc.AccessKeyID, SecretKey: secret, ForcePathStyle: sc.ForcePathStyle,
 		})
+		if err != nil {
+			return nil, err
+		}
+		return storage.NewMaskingBackend(be, secret), nil
 	default:
 		return nil, fmt.Errorf("storage type %q not supported", sc.Type)
 	}
