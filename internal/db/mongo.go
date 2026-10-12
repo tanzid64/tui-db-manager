@@ -1,0 +1,105 @@
+package db
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+)
+
+type mongoEngine struct{}
+
+func init() { Register(mongoEngine{}) }
+
+func (mongoEngine) Name() string     { return "mongodb" }
+func (mongoEngine) DefaultPort() int { return 27017 }
+
+func (mongoEngine) Detect() (string, error) { return lookTool("mongodump") }
+
+func BuildMongoBaseArgs(c Conn) []string {
+	args := []string{
+		fmt.Sprintf("--host=%s", c.Host),
+		fmt.Sprintf("--port=%d", c.Port),
+	}
+	if c.User != "" {
+		args = append(args, fmt.Sprintf("--username=%s", c.User))
+	}
+	if c.Database != "" {
+		args = append(args, fmt.Sprintf("--db=%s", c.Database))
+	}
+	if c.TLS {
+		args = append(args, "--tls")
+	}
+	return args
+}
+
+// writeMongoConfig writes a 0600 YAML config holding only the password, which
+// mongodump/mongorestore accept via --config, keeping it off the argv/ps list.
+func writeMongoConfig(password string) (string, func(), error) {
+	f, err := os.CreateTemp("", "dbk-mongo-*.yaml")
+	if err != nil {
+		return "", func() {}, err
+	}
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", func() {}, err
+	}
+	if _, err := fmt.Fprintf(f, "password: %q\n", password); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", func() {}, err
+	}
+	f.Close()
+	return f.Name(), func() { os.Remove(f.Name()) }, nil
+}
+
+func (e mongoEngine) withConfig(c Conn, base []string) ([]string, func(), error) {
+	if c.Password == "" {
+		return base, func() {}, nil
+	}
+	path, cleanup, err := writeMongoConfig(c.Password)
+	if err != nil {
+		return nil, func() {}, err
+	}
+	return append(base, "--config="+path), cleanup, nil
+}
+
+func (e mongoEngine) Test(ctx context.Context, c Conn) error {
+	tool, err := lookTool("mongosh", "mongo")
+	if err != nil {
+		return err
+	}
+	args, cleanup, err := e.withConfig(c, BuildMongoBaseArgs(c))
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return runCmd(ctx, cmdSpec{Path: tool, Args: append(args, "--eval", "db.runCommand({ping:1})")})
+}
+
+func (e mongoEngine) Dump(ctx context.Context, c Conn, w io.Writer) error {
+	tool, err := e.Detect()
+	if err != nil {
+		return err
+	}
+	args, cleanup, err := e.withConfig(c, append(BuildMongoBaseArgs(c), "--archive"))
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return runCmd(ctx, cmdSpec{Path: tool, Args: args, Stdout: w})
+}
+
+func (e mongoEngine) Restore(ctx context.Context, c Conn, r io.Reader) error {
+	tool, err := lookTool("mongorestore")
+	if err != nil {
+		return err
+	}
+	args, cleanup, err := e.withConfig(c, append(BuildMongoBaseArgs(c), "--archive", "--drop"))
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return runCmd(ctx, cmdSpec{Path: tool, Args: args, Stdin: r})
+}
