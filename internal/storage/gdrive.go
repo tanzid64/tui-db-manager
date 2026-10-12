@@ -41,6 +41,21 @@ func NewGDriveWith(api driveAPI, folderID string) *GDrive {
 func (g *GDrive) Name() string { return "gdrive" }
 
 func (g *GDrive) Put(ctx context.Context, key string, r io.Reader, size int64) error {
+	// Drive does not enforce unique names, so Create alone would accumulate
+	// duplicates on a repeated key and make Get/Delete/retention ambiguous.
+	// Delete any existing files with this name first, so a Put replaces the key
+	// (matching the local and S3 backends' contract).
+	files, err := g.api.List(ctx, g.folderID)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		if f.Name == key {
+			if err := g.api.Delete(ctx, f.ID); err != nil {
+				return err
+			}
+		}
+	}
 	return g.api.Create(ctx, key, g.folderID, r)
 }
 
