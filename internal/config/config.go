@@ -44,8 +44,21 @@ type Retention struct {
 
 type StorageConfig struct {
 	Name string `yaml:"name"`
-	Type string `yaml:"type"` // local (cloud types added in a later plan)
+	Type string `yaml:"type"` // local | s3
+
+	// Local backend.
 	Path string `yaml:"path,omitempty"`
+
+	// S3-family backend (AWS S3, Cloudflare R2, MinIO, Backblaze B2, Wasabi).
+	Bucket         string `yaml:"bucket,omitempty"`
+	Region         string `yaml:"region,omitempty"`
+	Endpoint       string `yaml:"endpoint,omitempty"` // empty = AWS default
+	Prefix         string `yaml:"prefix,omitempty"`    // key prefix within the bucket
+	AccessKeyID    string `yaml:"access_key_id,omitempty"`
+	ForcePathStyle bool   `yaml:"force_path_style,omitempty"`
+	// SecretKeyRef is "env:NAME", "file:/path", or empty (meaning the vault key
+	// "storage/<name>/secret_key"). The raw secret key is never stored here.
+	SecretKeyRef string `yaml:"secret_key_ref,omitempty"`
 }
 
 func fileName(dir string) string { return filepath.Join(dir, "config.yaml") }
