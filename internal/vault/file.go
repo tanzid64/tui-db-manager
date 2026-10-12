@@ -82,3 +82,21 @@ func open(key, blob []byte) ([]byte, KDFParams, error) {
 func uint32be(n int) []byte {
 	return []byte{byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)}
 }
+
+// peekParams reads the (authenticated-on-open) KDF header so the caller can
+// derive the key. The values are not trusted until open() verifies the AEAD tag.
+func peekParams(blob []byte) (KDFParams, error) {
+	if len(blob) < 8 || !bytes.Equal(blob[:4], magic) {
+		return KDFParams{}, fmt.Errorf("not a dbk vault file")
+	}
+	hlen := int(uint32(blob[4])<<24 | uint32(blob[5])<<16 | uint32(blob[6])<<8 | uint32(blob[7]))
+	rest := blob[8:]
+	if hlen < 0 || hlen > len(rest) {
+		return KDFParams{}, fmt.Errorf("corrupt vault header")
+	}
+	var h header
+	if err := json.Unmarshal(rest[:hlen], &h); err != nil {
+		return KDFParams{}, fmt.Errorf("corrupt vault header: %w", err)
+	}
+	return h.KDF, nil
+}
