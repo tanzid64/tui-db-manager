@@ -5,9 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>dbk — Modern, Encrypted Terminal Database Backup Manager</title>
   <meta name="description" content="Fast, secure, automated database backup manager with interactive TUI and CLI. Supports MySQL, PostgreSQL, MongoDB, SQLite with age encryption, Argon2id secrets vault, and sync to Google Drive, Cloudflare R2, S3, and local storage.">
+
+  <!-- Open Graph / Social -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="dbk — Encrypted Terminal Database Backup Manager">
+  <meta property="og:description" content="A single lightweight binary for automated, encrypted MySQL, PostgreSQL, MongoDB & SQLite backups with native multi-cloud sync.">
+  <meta property="og:url" content="https://tanzid64.github.io/tui-db-manager/">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="dbk — Encrypted Terminal Database Backup Manager">
+  <meta name="twitter:description" content="Automated, encrypted database backups with an interactive TUI and scriptable CLI. MySQL, PostgreSQL, MongoDB, SQLite.">
+  <meta name="theme-color" content="#090d16">
+
+  <!-- Inline SVG favicon -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237c3aed'/%3E%3Cstop offset='1' stop-color='%2310b981'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='15' font-weight='700' fill='white' text-anchor='middle'%3E%3E_%3C/text%3E%3C/svg%3E">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -16,492 +30,500 @@
         extend: {
           colors: {
             brand: {
-              50: '#f5f3ff',
-              100: '#ede9fe',
-              500: '#8b5cf6',
-              600: '#7c3aed',
-              700: '#6d28d9',
+              50: '#f5f3ff', 100: '#ede9fe', 200: '#ddd6fe', 300: '#c4b5fd',
+              400: '#a78bfa', 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9', 800: '#5b21b6',
             },
             accent: {
-              400: '#34d399',
-              500: '#10b981',
-              600: '#059669',
+              300: '#6ee7b7', 400: '#34d399', 500: '#10b981', 600: '#059669',
             },
             dark: {
-              950: '#090d16',
-              900: '#0f172a',
-              850: '#131d35',
-              800: '#1e293b',
-              700: '#334155',
+              950: '#090d16', 900: '#0f172a', 850: '#131d35', 800: '#1e293b', 700: '#334155',
             }
           },
           fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-            mono: ['Fira Code', 'monospace'],
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['Fira Code', 'ui-monospace', 'monospace'],
           }
         }
       }
     }
   </script>
   <style>
-    /* Custom scrollbars and styling */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: #0f172a; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { overflow-x: hidden; }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 9px; height: 9px; }
+    ::-webkit-scrollbar-track { background: #0b1120; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 6px; }
     ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    /* Fluid type helpers */
+    .fluid-h1 { font-size: clamp(2.25rem, 6vw, 4.25rem); line-height: 1.04; }
+    .fluid-h2 { font-size: clamp(1.75rem, 3.6vw, 2.75rem); line-height: 1.1; }
+
+    /* Glass surfaces */
     .glass {
-      background: rgba(15, 23, 42, 0.75);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(10, 14, 24, 0.72);
+      backdrop-filter: blur(14px) saturate(140%);
+      -webkit-backdrop-filter: blur(14px) saturate(140%);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
     }
     .glass-card {
-      background: rgba(30, 41, 59, 0.5);
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.55) 100%);
       backdrop-filter: blur(8px);
-      border: 1px solid rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      transition: transform .35s cubic-bezier(.16,1,.3,1), border-color .35s ease, box-shadow .35s ease;
+      will-change: transform;
     }
     .glass-card:hover {
-      border-color: rgba(139, 92, 246, 0.3);
+      border-color: rgba(139, 92, 246, 0.45);
+      box-shadow: 0 18px 50px -20px rgba(124, 58, 237, 0.45);
     }
+
     .gradient-text {
-      background: linear-gradient(135deg, #a78bfa 0%, #34d399 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      background: linear-gradient(110deg, #a78bfa 0%, #34d399 60%, #6ee7b7 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; color: transparent;
+      animation: textShine 6s linear infinite;
     }
-    .glow-brand {
-      box-shadow: 0 0 35px -5px rgba(139, 92, 246, 0.25);
+    @keyframes textShine { to { background-position: 200% center; } }
+
+    .glow-brand { box-shadow: 0 0 60px -12px rgba(139, 92, 246, 0.35); }
+
+    /* Animated gradient border wrapper */
+    .grad-border { position: relative; }
+    .grad-border::before {
+      content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+      background: linear-gradient(130deg, rgba(139,92,246,.55), rgba(16,185,129,.4), transparent 60%);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+      pointer-events: none;
     }
-    .tab-active {
-      background: #7c3aed !important;
-      color: #ffffff !important;
-      border-color: #8b5cf6 !important;
+
+    /* Aurora blobs */
+    .aurora { position: absolute; border-radius: 9999px; filter: blur(120px); pointer-events: none; opacity: .55; }
+    @keyframes drift1 { 0%,100% { transform: translate(0,0) scale(1);} 50% { transform: translate(40px,30px) scale(1.12);} }
+    @keyframes drift2 { 0%,100% { transform: translate(0,0) scale(1);} 50% { transform: translate(-50px,20px) scale(1.08);} }
+    .aurora-1 { animation: drift1 14s ease-in-out infinite; }
+    .aurora-2 { animation: drift2 18s ease-in-out infinite; }
+
+    /* Dot grid overlay */
+    .dot-grid {
+      background-image: radial-gradient(rgba(148,163,184,0.12) 1px, transparent 1px);
+      background-size: 26px 26px;
+      -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 30%, transparent 75%);
+      mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 30%, transparent 75%);
+    }
+
+    /* Scroll progress bar */
+    #scroll-progress {
+      position: fixed; top: 0; left: 0; height: 3px; width: 0%;
+      background: linear-gradient(90deg, #7c3aed, #34d399); z-index: 60;
+      box-shadow: 0 0 10px rgba(139,92,246,.6); transition: width .08s linear;
+    }
+
+    /* Scroll reveal */
+    .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
+    .reveal.in { opacity: 1; transform: none; }
+
+    /* Nav link underline */
+    .nav-link { position: relative; }
+    .nav-link::after {
+      content: ""; position: absolute; left: 0; bottom: -4px; height: 2px; width: 0;
+      background: linear-gradient(90deg, #8b5cf6, #34d399); transition: width .3s ease; border-radius: 2px;
+    }
+    .nav-link:hover::after, .nav-link.active::after { width: 100%; }
+    .nav-link.active { color: #fff; }
+
+    /* Tabs */
+    .tab-active { background: #7c3aed !important; color: #fff !important; border-color: #8b5cf6 !important; box-shadow: 0 8px 24px -10px rgba(124,58,237,.7); }
+    .tab-panel { animation: panelFade .45s cubic-bezier(.16,1,.3,1); }
+    @keyframes panelFade { from { opacity: 0; transform: translateY(10px);} to { opacity: 1; transform: none; } }
+
+    /* Pipeline flow line */
+    .flow-line { position: relative; overflow: hidden; }
+    .flow-line::after {
+      content: ""; position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(52,211,153,.9), transparent);
+      width: 40%; animation: flow 2.4s linear infinite;
+    }
+    @keyframes flow { from { transform: translateX(-120%);} to { transform: translateX(320%);} }
+
+    /* Typing caret */
+    .caret { display: inline-block; width: 8px; height: 1.05em; background: #34d399; margin-left: 2px; vertical-align: text-bottom; animation: blink 1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* Mobile drawer */
+    #mobile-drawer { transition: transform .35s cubic-bezier(.16,1,.3,1), opacity .35s ease; }
+
+    /* Floating badge pulse */
+    @keyframes softPulse { 0%,100% { opacity:.6; transform: scale(1);} 50% { opacity:1; transform: scale(1.25);} }
+    .ping-dot { animation: softPulse 2s ease-in-out infinite; }
+
+    /* Back to top */
+    #to-top { transition: opacity .3s ease, transform .3s ease; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+      .reveal { opacity: 1 !important; transform: none !important; }
+      #scroll-progress { display: none; }
     }
   </style>
 </head>
-<body class="bg-dark-950 text-slate-200 font-sans antialiased selection:bg-brand-600 selection:text-white">
+<body class="bg-dark-950 text-slate-300 font-sans antialiased selection:bg-brand-600 selection:text-white">
+
+  <div id="scroll-progress"></div>
 
   <!-- Sticky Navbar -->
-  <header class="sticky top-0 z-50 glass border-b border-white/10">
+  <header id="navbar" class="sticky top-0 z-50 glass">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-      <div class="flex items-center space-x-3">
-        <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-brand-600 to-accent-500 flex items-center justify-center font-mono font-bold text-white shadow-lg shadow-brand-500/20">
+      <a href="#top" class="flex items-center space-x-3 group">
+        <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-brand-600 to-accent-500 flex items-center justify-center font-mono font-bold text-white shadow-lg shadow-brand-500/30 group-hover:scale-105 transition-transform">
           &gt;_
         </div>
         <div class="flex items-center space-x-2">
           <span class="text-xl font-bold tracking-tight text-white">dbk</span>
-          <span class="text-xs px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 font-mono">v1.0.5</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-300 border border-brand-500/20 font-mono">v1.0.5</span>
         </div>
-      </div>
+      </a>
 
-      <nav class="hidden md:flex items-center space-x-8 text-sm font-medium text-slate-300">
-        <a href="#overview" class="hover:text-white transition-colors">Overview</a>
-        <a href="#how-it-works" class="hover:text-white transition-colors">Architecture</a>
-        <a href="#storage-guides" class="hover:text-brand-400 transition-colors flex items-center gap-1">
-          Storage Guides <span class="text-[10px] bg-accent-500/20 text-accent-400 px-1.5 py-0.5 rounded font-mono">Hot</span>
+      <nav class="hidden md:flex items-center space-x-7 text-sm font-medium text-slate-300">
+        <a href="#overview" class="nav-link hover:text-white transition-colors">Overview</a>
+        <a href="#how-it-works" class="nav-link hover:text-white transition-colors">Architecture</a>
+        <a href="#storage-guides" class="nav-link hover:text-brand-300 transition-colors flex items-center gap-1">
+          Storage <span class="text-[10px] bg-accent-500/20 text-accent-300 px-1.5 py-0.5 rounded font-mono">Hot</span>
         </a>
-        <a href="#databases" class="hover:text-white transition-colors">Databases</a>
-        <a href="#cli" class="hover:text-white transition-colors">CLI Commands</a>
-        <a href="#install" class="hover:text-white transition-colors">Quickstart</a>
+        <a href="#databases" class="nav-link hover:text-white transition-colors">Databases</a>
+        <a href="#cli" class="nav-link hover:text-white transition-colors">CLI</a>
+        <a href="#install" class="nav-link hover:text-white transition-colors">Install</a>
       </nav>
 
-      <div class="flex items-center space-x-4">
-        <a href="https://github.com/tanzid64/tui-db-manager" target="_blank" rel="noopener" class="hidden sm:inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 transition-all">
+      <div class="flex items-center space-x-3">
+        <a href="https://github.com/tanzid64/tui-db-manager" target="_blank" rel="noopener" class="hidden sm:inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/70 hover:bg-slate-700 hover:border-slate-600 text-xs font-medium text-slate-200 transition-all">
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-          <span>Star on GitHub</span>
+          <span>Star</span>
         </a>
-        <a href="#install" class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 font-medium text-xs text-white shadow-md shadow-brand-600/30 transition-all">
-          Install dbk
+        <a href="#install" class="hidden sm:inline-flex items-center justify-center px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 font-semibold text-xs text-white shadow-md shadow-brand-600/30 transition-all hover:-translate-y-0.5">
+          Install
         </a>
+        <!-- Mobile hamburger -->
+        <button id="menu-btn" aria-label="Open menu" aria-expanded="false" class="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg border border-slate-700 bg-slate-800/70 text-slate-200">
+          <svg id="menu-icon-open" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          <svg id="menu-icon-close" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
       </div>
     </div>
   </header>
 
-  <!-- Hero Section -->
-  <section class="relative pt-16 pb-20 overflow-hidden">
-    <!-- Glow background gradients -->
-    <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-brand-600/15 blur-[120px] rounded-full pointer-events-none"></div>
-    <div class="absolute top-40 right-10 w-[400px] h-[300px] bg-accent-500/10 blur-[120px] rounded-full pointer-events-none"></div>
+  <!-- Mobile Drawer -->
+  <div id="mobile-overlay" class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none md:hidden transition-opacity duration-300"></div>
+  <aside id="mobile-drawer" class="fixed top-16 right-0 bottom-0 z-40 w-72 max-w-[80vw] bg-dark-900 border-l border-slate-800 translate-x-full md:hidden p-6 flex flex-col">
+    <nav class="flex flex-col space-y-1 text-base font-medium text-slate-300">
+      <a href="#overview" class="mobile-nav py-3 px-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">Overview</a>
+      <a href="#how-it-works" class="mobile-nav py-3 px-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">Architecture</a>
+      <a href="#storage-guides" class="mobile-nav py-3 px-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors flex items-center gap-2">Storage Guides <span class="text-[10px] bg-accent-500/20 text-accent-300 px-1.5 py-0.5 rounded font-mono">Hot</span></a>
+      <a href="#databases" class="mobile-nav py-3 px-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">Databases</a>
+      <a href="#cli" class="mobile-nav py-3 px-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">CLI Commands</a>
+      <a href="#install" class="mobile-nav py-3 px-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">Quickstart</a>
+    </nav>
+    <div class="mt-auto pt-6 border-t border-slate-800 space-y-3">
+      <a href="#install" class="mobile-nav block text-center px-4 py-3 rounded-lg bg-brand-600 hover:bg-brand-500 font-semibold text-sm text-white transition-colors">Install dbk</a>
+      <a href="https://github.com/tanzid64/tui-db-manager" target="_blank" rel="noopener" class="block text-center px-4 py-3 rounded-lg border border-slate-700 text-sm text-slate-200 hover:bg-slate-800 transition-colors">Star on GitHub</a>
+    </div>
+  </aside>
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="text-center max-w-3xl mx-auto mb-12">
-        <div class="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full border border-brand-500/30 bg-brand-500/10 text-xs font-medium text-brand-300 mb-6">
-          <span class="flex h-2 w-2 rounded-full bg-accent-400 animate-pulse"></span>
-          <span>v1.0.5 Live: Editable Entries, Cron Presets &amp; Auto-Update</span>
+  <span id="top"></span>
+
+  <!-- Hero Section -->
+  <section class="relative pt-14 sm:pt-20 pb-16 sm:pb-24 overflow-hidden">
+    <!-- Aurora background -->
+    <div class="aurora aurora-1 -top-40 left-1/2 -translate-x-1/2 w-[640px] h-[360px] bg-brand-600/40"></div>
+    <div class="aurora aurora-2 top-32 -right-20 w-[420px] h-[320px] bg-accent-500/25"></div>
+    <div class="aurora top-56 -left-24 w-[380px] h-[300px] bg-blue-600/20"></div>
+    <div class="absolute inset-0 dot-grid pointer-events-none"></div>
+
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center max-w-3xl mx-auto mb-10 sm:mb-14">
+        <div class="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full border border-brand-500/30 bg-brand-500/10 text-xs font-medium text-brand-200 mb-6 reveal">
+          <span class="flex h-2 w-2 rounded-full bg-accent-400 ping-dot"></span>
+          <span>v1.0.5 — Editable Entries, Cron Presets &amp; Auto-Update</span>
         </div>
 
-        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
-          Modern, Encrypted Database Backups for <span class="gradient-text">Terminal Ninjas</span>
+        <h1 class="fluid-h1 font-extrabold tracking-tight text-white mb-6 reveal">
+          Encrypted Database Backups<br class="hidden sm:block"> for <span class="gradient-text">Terminal Ninjas</span>
         </h1>
 
-        <p class="text-lg text-slate-300 mb-8 leading-relaxed">
+        <p class="text-base sm:text-lg text-slate-300 mb-8 leading-relaxed max-w-2xl mx-auto reveal">
           A single lightweight binary for automated <strong class="text-white">MySQL, PostgreSQL, MongoDB, and SQLite</strong> backups.
-          Features client-side <strong class="text-white">age public-key encryption</strong>, local <strong class="text-white">Argon2id vault</strong>, and native sync to <strong class="text-white">Google Drive, Cloudflare R2, AWS S3, and local storage</strong>.
+          Client-side <strong class="text-white">age encryption</strong>, an <strong class="text-white">Argon2id vault</strong>, and native sync to <strong class="text-white">Google Drive, Cloudflare R2, AWS S3, and local storage</strong>.
         </p>
 
         <!-- Install Command Box -->
-        <div class="max-w-xl mx-auto bg-dark-900 border border-slate-700/80 rounded-xl p-2.5 shadow-2xl flex items-center justify-between font-mono text-xs sm:text-sm text-slate-200 glow-brand">
-          <div class="flex items-center space-x-3 pl-2 overflow-x-auto py-1">
+        <div class="max-w-xl mx-auto bg-dark-900/90 border border-slate-700/80 rounded-xl p-2 sm:p-2.5 shadow-2xl flex items-center justify-between font-mono text-[11px] sm:text-sm text-slate-200 glow-brand grad-border reveal">
+          <div class="flex items-center space-x-2 sm:space-x-3 pl-2 overflow-x-auto py-1 min-w-0">
             <span class="text-accent-400 select-none">$</span>
-            <span class="whitespace-nowrap select-all text-slate-100">curl -fsSL https://raw.githubusercontent.com/tanzid64/tui-db-manager/main/install.sh | sh</span>
+            <span class="whitespace-nowrap select-all text-slate-100" id="install-cmd">curl -fsSL https://raw.githubusercontent.com/tanzid64/tui-db-manager/main/install.sh | sh</span>
           </div>
-          <button onclick="copyInstallCmd(this)" class="ml-2 flex-shrink-0 px-3 py-1.5 rounded-lg bg-brand-600/80 hover:bg-brand-500 text-white font-sans text-xs font-medium transition-colors flex items-center space-x-1.5">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
-            <span>Copy</span>
+          <button data-copy="#install-cmd" class="copy-btn ml-2 flex-shrink-0 px-2.5 sm:px-3 py-1.5 rounded-lg bg-brand-600/80 hover:bg-brand-500 text-white font-sans text-xs font-medium transition-colors flex items-center space-x-1.5">
+            <svg class="w-3.5 h-3.5 copy-ico" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3"/></svg>
+            <span class="copy-label hidden sm:inline">Copy</span>
           </button>
         </div>
-        <p class="text-xs text-slate-400 mt-2 font-mono">Linux &bull; macOS (Apple Silicon &amp; Intel) &bull; Zero external runtime dependencies</p>
+        <p class="text-xs text-slate-400 mt-3 font-mono reveal">Linux &bull; macOS (Apple Silicon &amp; Intel) &bull; Zero runtime dependencies</p>
       </div>
 
       <!-- Interactive Terminal Mockup -->
-      <div class="max-w-5xl mx-auto rounded-2xl overflow-hidden border border-slate-700/70 shadow-2xl bg-dark-900 glow-brand">
-        <!-- Terminal Header -->
+      <div class="max-w-5xl mx-auto rounded-2xl overflow-hidden border border-slate-700/70 shadow-2xl bg-dark-900 glow-brand reveal">
         <div class="bg-dark-850 px-4 py-3 flex items-center justify-between border-b border-slate-700/60 select-none">
           <div class="flex items-center space-x-2">
             <div class="w-3 h-3 rounded-full bg-rose-500/80"></div>
             <div class="w-3 h-3 rounded-full bg-amber-500/80"></div>
             <div class="w-3 h-3 rounded-full bg-emerald-500/80"></div>
-            <span class="text-xs font-mono text-slate-400 ml-3">dbk — bubbletea terminal UI</span>
+            <span class="text-xs font-mono text-slate-400 ml-3 hidden sm:inline">dbk — bubbletea terminal UI</span>
           </div>
-          <div class="text-[11px] font-mono text-brand-400 flex items-center gap-1.5">
-            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Vault Unlocked (AES-256-GCM)</span>
+          <div class="text-[11px] font-mono text-brand-300 flex items-center gap-1.5">
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 ping-dot"></span>
+            <span>Vault Unlocked</span>
           </div>
         </div>
 
-        <!-- Terminal Body -->
-        <div class="p-6 font-mono text-xs sm:text-sm leading-relaxed overflow-x-auto bg-dark-950/90 text-slate-200">
-          <div class="bg-brand-700 text-white font-bold px-3 py-1 inline-block rounded mb-4">
-            dbk v1.0.5 • Secure Database Backup Manager
-          </div>
-          <div class="text-brand-400 font-bold mb-2 text-base">▶ Backup Jobs Overview</div>
-          <div class="text-slate-400 text-xs mb-4">Automated database snapshots, client-side encryption &amp; multi-cloud sync</div>
-
-          <div class="border border-brand-500/30 rounded-lg p-4 bg-dark-900/60 space-y-3">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded bg-slate-800/40 border-l-4 border-emerald-500">
-              <div class="flex items-center gap-3">
-                <span class="text-emerald-400 font-bold">▶ prod-mysql</span>
-                <span class="text-slate-400 text-xs">(mysql &rarr; r2, keep 7)</span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">[gz+age]</span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">⏰ 0 2 * * *</span>
-              </div>
-              <span class="text-emerald-400 text-xs font-bold self-start sm:self-auto">✔ OK (42.8 MB, 2.4s)</span>
-            </div>
-
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded hover:bg-slate-800/20">
-              <div class="flex items-center gap-3">
-                <span class="text-slate-200">  users-postgres</span>
-                <span class="text-slate-400 text-xs">(postgres &rarr; gdrive, keep 14)</span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">[gz+age]</span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">⏰ 0 4 * * *</span>
-              </div>
-              <span class="text-emerald-400 text-xs font-bold self-start sm:self-auto">✔ OK (118.2 MB, 5.1s)</span>
-            </div>
-
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded hover:bg-slate-800/20">
-              <div class="flex items-center gap-3">
-                <span class="text-slate-200">  analytics-mongo</span>
-                <span class="text-slate-400 text-xs">(mongodb &rarr; aws-s3, keep 30)</span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">[gz]</span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">⏰ 0 0 * * 0</span>
-              </div>
-              <span class="text-emerald-400 text-xs font-bold self-start sm:self-auto">✔ OK (1.2 GB, 24.3s)</span>
-            </div>
-
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded hover:bg-slate-800/20">
-              <div class="flex items-center gap-3">
-                <span class="text-slate-200">  sqlite-app</span>
-                <span class="text-slate-400 text-xs">(sqlite &rarr; local, keep 10)</span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">[gz]</span>
-                <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">⏰ */15 * * * *</span>
-              </div>
-              <span class="text-emerald-400 text-xs font-bold self-start sm:self-auto">✔ OK (4.1 MB, 0.1s)</span>
-            </div>
+        <div class="p-4 sm:p-6 font-mono text-[11px] sm:text-sm leading-relaxed overflow-x-auto bg-dark-950/90 text-slate-200">
+          <!-- Typed intro line -->
+          <div class="mb-4 text-slate-400">
+            <span class="text-accent-400">➜</span>
+            <span class="text-brand-300">~</span>
+            <span id="typed-cmd" class="text-slate-100"></span><span class="caret" id="typed-caret"></span>
           </div>
 
-          <div class="mt-4 pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-2">
-            <div>
-              <span class="text-brand-300 font-bold">r:</span> Run &bull;
-              <span class="text-brand-300 font-bold">a:</span> Add &bull;
-              <span class="text-brand-300 font-bold">e:</span> Edit &bull;
-              <span class="text-brand-300 font-bold">d:</span> Delete &bull;
-              <span class="text-brand-300 font-bold">b:</span> Restore &bull;
-              <span class="text-brand-300 font-bold">u:</span> Check Updates
+          <div id="terminal-output" class="opacity-0 transition-opacity duration-500">
+            <div class="bg-brand-700 text-white font-bold px-3 py-1 inline-block rounded mb-4 text-xs sm:text-sm">
+              dbk v1.0.5 • Secure Database Backup Manager
             </div>
-            <div class="text-accent-400 font-semibold">[Responsive: 100 cols]</div>
+            <div class="text-brand-300 font-bold mb-2 text-sm sm:text-base">▶ Backup Jobs Overview</div>
+            <div class="text-slate-400 text-xs mb-4">Automated snapshots, client-side encryption &amp; multi-cloud sync</div>
+
+            <div class="border border-brand-500/30 rounded-lg p-3 sm:p-4 bg-dark-900/60 space-y-2.5">
+              <div class="job-row flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded bg-slate-800/40 border-l-4 border-emerald-500">
+                <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <span class="text-emerald-400 font-bold">▶ prod-mysql</span>
+                  <span class="text-slate-400 text-xs">(mysql &rarr; r2, keep 7)</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">[gz+age]</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">⏰ 0 2 * * *</span>
+                </div>
+                <span class="text-emerald-400 text-xs font-bold self-start sm:self-auto">✔ OK (42.8 MB, 2.4s)</span>
+              </div>
+              <div class="job-row flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded hover:bg-slate-800/30 transition-colors">
+                <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <span class="text-slate-200">users-postgres</span>
+                  <span class="text-slate-400 text-xs">(postgres &rarr; gdrive, keep 14)</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">[gz+age]</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">⏰ 0 4 * * *</span>
+                </div>
+                <span class="text-emerald-400 text-xs font-bold self-start sm:self-auto">✔ OK (118.2 MB, 5.1s)</span>
+              </div>
+              <div class="job-row flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded hover:bg-slate-800/30 transition-colors">
+                <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <span class="text-slate-200">analytics-mongo</span>
+                  <span class="text-slate-400 text-xs">(mongodb &rarr; aws-s3, keep 30)</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">[gz]</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">⏰ 0 0 * * 0</span>
+                </div>
+                <span class="text-emerald-400 text-xs font-bold self-start sm:self-auto">✔ OK (1.2 GB, 24.3s)</span>
+              </div>
+              <div class="job-row flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded hover:bg-slate-800/30 transition-colors">
+                <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <span class="text-slate-200">sqlite-app</span>
+                  <span class="text-slate-400 text-xs">(sqlite &rarr; local, keep 10)</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">[gz]</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">⏰ */15 * * * *</span>
+                </div>
+                <span class="text-emerald-400 text-xs font-bold self-start sm:self-auto">✔ OK (4.1 MB, 0.1s)</span>
+              </div>
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-2">
+              <div class="flex flex-wrap gap-x-3 gap-y-1">
+                <span><span class="text-brand-300 font-bold">r</span> Run</span>
+                <span><span class="text-brand-300 font-bold">a</span> Add</span>
+                <span><span class="text-brand-300 font-bold">e</span> Edit</span>
+                <span><span class="text-brand-300 font-bold">d</span> Delete</span>
+                <span><span class="text-brand-300 font-bold">b</span> Restore</span>
+                <span><span class="text-brand-300 font-bold">u</span> Update</span>
+              </div>
+              <div class="text-accent-400 font-semibold">[Responsive TUI]</div>
+            </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Stats / Trust band -->
+      <div class="max-w-5xl mx-auto mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 reveal">
+        <div class="glass-card rounded-xl p-4 text-center">
+          <div class="text-2xl sm:text-3xl font-extrabold text-white" data-count="4" data-suffix="">0</div>
+          <div class="text-xs text-slate-400 mt-1">Database engines</div>
+        </div>
+        <div class="glass-card rounded-xl p-4 text-center">
+          <div class="text-2xl sm:text-3xl font-extrabold text-white" data-count="6" data-suffix="">0</div>
+          <div class="text-xs text-slate-400 mt-1">Storage backends</div>
+        </div>
+        <div class="glass-card rounded-xl p-4 text-center">
+          <div class="text-2xl sm:text-3xl font-extrabold gradient-text">1</div>
+          <div class="text-xs text-slate-400 mt-1">Static binary</div>
+        </div>
+        <div class="glass-card rounded-xl p-4 text-center">
+          <div class="text-2xl sm:text-3xl font-extrabold text-white" data-count="0" data-suffix="">0</div>
+          <div class="text-xs text-slate-400 mt-1">Plaintext secrets</div>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Core Highlights Grid -->
-  <section id="overview" class="py-20 border-t border-slate-800 bg-dark-900/40">
+  <section id="overview" class="py-16 sm:py-24 border-t border-slate-800/80 bg-dark-900/40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="text-center max-w-2xl mx-auto mb-16">
-        <h2 class="text-xs font-mono uppercase tracking-widest text-brand-400 font-bold mb-2">Designed for Reliability &amp; Privacy</h2>
-        <h3 class="text-3xl sm:text-4xl font-extrabold text-white">Why Developers &amp; DevOps Choose dbk</h3>
+      <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16 reveal">
+        <h2 class="text-xs font-mono uppercase tracking-widest text-brand-300 font-bold mb-2">Designed for Reliability &amp; Privacy</h2>
+        <h3 class="fluid-h2 font-extrabold text-white">Why Developers &amp; DevOps Choose dbk</h3>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <!-- Feature 1 -->
-        <div class="glass-card rounded-xl p-6 transition-all duration-200">
-          <div class="w-10 h-10 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400 mb-4 font-mono font-bold text-lg">
-            🔒
-          </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+        <div class="tilt glass-card rounded-xl p-6 reveal">
+          <div class="w-11 h-11 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-xl mb-4">🔒</div>
           <h4 class="text-lg font-bold text-white mb-2">Zero Plaintext Secrets</h4>
-          <p class="text-sm text-slate-400 leading-relaxed">
-            Database credentials, S3 secret keys, and bot tokens are stored in an encrypted local vault (<code class="text-brand-300">secrets.enc</code>) using Argon2id key derivation and AES-256-GCM authenticated encryption.
-          </p>
+          <p class="text-sm text-slate-400 leading-relaxed">Database credentials, S3 secret keys, and bot tokens are stored in an encrypted local vault (<code class="text-brand-300">secrets.enc</code>) using Argon2id key derivation and AES-256-GCM authenticated encryption.</p>
         </div>
-
-        <!-- Feature 2 -->
-        <div class="glass-card rounded-xl p-6 transition-all duration-200">
-          <div class="w-10 h-10 rounded-lg bg-accent-500/10 border border-accent-500/20 flex items-center justify-center text-accent-400 mb-4 font-mono font-bold text-lg">
-            🛡️
-          </div>
+        <div class="tilt glass-card rounded-xl p-6 reveal">
+          <div class="w-11 h-11 rounded-lg bg-accent-500/10 border border-accent-500/20 flex items-center justify-center text-xl mb-4">🛡️</div>
           <h4 class="text-lg font-bold text-white mb-2">Client-Side Age Encryption</h4>
-          <p class="text-sm text-slate-400 leading-relaxed">
-            Backups can be streamed directly into modern <code class="text-accent-300">age</code> (X25519) encryption before uploading. Unattended backup servers only need the public recipient key; your private keys stay cold.
-          </p>
+          <p class="text-sm text-slate-400 leading-relaxed">Backups can be streamed directly into modern <code class="text-accent-300">age</code> (X25519) encryption before uploading. Unattended servers only need the public recipient key; your private keys stay cold.</p>
         </div>
-
-        <!-- Feature 3 -->
-        <div class="glass-card rounded-xl p-6 transition-all duration-200">
-          <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-4 font-mono font-bold text-lg">
-            🔍
-          </div>
+        <div class="tilt glass-card rounded-xl p-6 reveal">
+          <div class="w-11 h-11 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-xl mb-4">🔍</div>
           <h4 class="text-lg font-bold text-white mb-2">Live Database Discovery</h4>
-          <p class="text-sm text-slate-400 leading-relaxed">
-            When configuring MySQL or PostgreSQL, dbk dynamically discovers databases on the host and lets you pick from a menu instead of memorizing and manually typing catalog names.
-          </p>
+          <p class="text-sm text-slate-400 leading-relaxed">When configuring MySQL or PostgreSQL, dbk dynamically discovers databases on the host and lets you pick from a menu instead of memorizing and manually typing catalog names.</p>
         </div>
-
-        <!-- Feature 4 -->
-        <div class="glass-card rounded-xl p-6 transition-all duration-200">
-          <div class="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-4 font-mono font-bold text-lg">
-            ☁️
-          </div>
+        <div class="tilt glass-card rounded-xl p-6 reveal">
+          <div class="w-11 h-11 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-xl mb-4">☁️</div>
           <h4 class="text-lg font-bold text-white mb-2">Native Multi-Cloud Sync</h4>
-          <p class="text-sm text-slate-400 leading-relaxed">
-            Stream directly to Google Drive (Service Account), Cloudflare R2 (zero egress fees), AWS S3, MinIO, Wasabi, Backblaze B2, or local/NFS mounts with automatic retention pruning.
-          </p>
+          <p class="text-sm text-slate-400 leading-relaxed">Stream directly to Google Drive (Service Account), Cloudflare R2 (zero egress fees), AWS S3, MinIO, Wasabi, Backblaze B2, or local/NFS mounts with automatic retention pruning.</p>
         </div>
-
-        <!-- Feature 5 -->
-        <div class="glass-card rounded-xl p-6 transition-all duration-200">
-          <div class="w-10 h-10 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-4 font-mono font-bold text-lg">
-            ⏰
-          </div>
+        <div class="tilt glass-card rounded-xl p-6 reveal">
+          <div class="w-11 h-11 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-xl mb-4">⏰</div>
           <h4 class="text-lg font-bold text-white mb-2">OS-Native Scheduler</h4>
-          <p class="text-sm text-slate-400 leading-relaxed">
-            No memory-leaking background daemon. Registers headless scheduled jobs directly with <code class="text-rose-300">systemd</code> timers, UNIX <code class="text-rose-300">cron</code>, or Windows Task Scheduler with 1 click.
-          </p>
+          <p class="text-sm text-slate-400 leading-relaxed">No memory-leaking background daemon. Registers headless scheduled jobs directly with <code class="text-rose-300">systemd</code> timers, UNIX <code class="text-rose-300">cron</code>, or Windows Task Scheduler with 1 click.</p>
         </div>
-
-        <!-- Feature 6 -->
-        <div class="glass-card rounded-xl p-6 transition-all duration-200">
-          <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4 font-mono font-bold text-lg">
-            🚀
-          </div>
+        <div class="tilt glass-card rounded-xl p-6 reveal">
+          <div class="w-11 h-11 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-xl mb-4">🚀</div>
           <h4 class="text-lg font-bold text-white mb-2">In-Place Self-Updater</h4>
-          <p class="text-sm text-slate-400 leading-relaxed">
-            Detects new GitHub releases in the background, alerts you with a modal in the TUI, verifies SHA-256 digests against <code class="text-emerald-300">checksums.txt</code>, and safely replaces the binary in-place.
-          </p>
+          <p class="text-sm text-slate-400 leading-relaxed">Detects new GitHub releases in the background, alerts you with a modal in the TUI, verifies SHA-256 digests against <code class="text-emerald-300">checksums.txt</code>, and safely replaces the binary in-place.</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Architecture / How it Works -->
-  <section id="how-it-works" class="py-20 border-t border-slate-800">
+  <section id="how-it-works" class="py-16 sm:py-24 border-t border-slate-800/80">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="text-center max-w-2xl mx-auto mb-16">
-        <h2 class="text-xs font-mono uppercase tracking-widest text-brand-400 font-bold mb-2">High Efficiency Pipeline</h2>
-        <h3 class="text-3xl sm:text-4xl font-extrabold text-white">How the dbk Engine Works</h3>
+      <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16 reveal">
+        <h2 class="text-xs font-mono uppercase tracking-widest text-brand-300 font-bold mb-2">High Efficiency Pipeline</h2>
+        <h3 class="fluid-h2 font-extrabold text-white">How the dbk Engine Works</h3>
         <p class="text-sm text-slate-400 mt-3">Memory-bounded Unix pipe streaming: never buffers multi-gigabyte databases entirely into RAM.</p>
       </div>
 
-      <!-- Pipeline Steps Flow -->
-      <div class="grid grid-cols-1 md:grid-cols-6 gap-3 max-w-5xl mx-auto text-center font-mono text-xs">
-        <div class="bg-dark-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center">
-          <span class="w-7 h-7 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center mb-2 font-bold">1</span>
-          <span class="text-slate-200 font-bold">DB Dump</span>
-          <span class="text-[11px] text-slate-500 mt-1">mysqldump, pg_dump, mongodump, sqlite vacuum</span>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 max-w-5xl mx-auto text-center font-mono text-xs items-stretch">
+        <div class="reveal glass-card rounded-xl p-4 flex flex-col items-center justify-center lg:col-span-1">
+          <span class="w-8 h-8 rounded-full bg-brand-500/20 text-brand-300 flex items-center justify-center mb-2 font-bold">1</span>
+          <span class="text-slate-100 font-bold">DB Dump</span>
+          <span class="text-[11px] text-slate-500 mt-1">mysqldump, pg_dump, mongodump, vacuum</span>
         </div>
-        <div class="hidden md:flex items-center justify-center text-slate-600 font-bold">&rarr;</div>
-        <div class="bg-dark-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center">
-          <span class="w-7 h-7 rounded-full bg-accent-500/20 text-accent-400 flex items-center justify-center mb-2 font-bold">2</span>
-          <span class="text-slate-200 font-bold">Compress</span>
-          <span class="text-[11px] text-slate-500 mt-1">Streaming Gzip Level 9 (CPU friendly)</span>
+        <div class="hidden lg:flex items-center justify-center"><div class="flow-line w-full h-0.5 bg-slate-800 rounded"></div></div>
+        <div class="reveal glass-card rounded-xl p-4 flex flex-col items-center justify-center lg:col-span-1">
+          <span class="w-8 h-8 rounded-full bg-accent-500/20 text-accent-300 flex items-center justify-center mb-2 font-bold">2</span>
+          <span class="text-slate-100 font-bold">Compress</span>
+          <span class="text-[11px] text-slate-500 mt-1">Streaming Gzip (CPU friendly)</span>
         </div>
-        <div class="hidden md:flex items-center justify-center text-slate-600 font-bold">&rarr;</div>
-        <div class="bg-dark-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center">
-          <span class="w-7 h-7 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center mb-2 font-bold">3</span>
-          <span class="text-slate-200 font-bold">Age Encrypt</span>
-          <span class="text-[11px] text-slate-500 mt-1">X25519 asymmetric envelope cipher</span>
+        <div class="hidden lg:flex items-center justify-center"><div class="flow-line w-full h-0.5 bg-slate-800 rounded"></div></div>
+        <div class="reveal glass-card rounded-xl p-4 flex flex-col items-center justify-center lg:col-span-1">
+          <span class="w-8 h-8 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center mb-2 font-bold">3</span>
+          <span class="text-slate-100 font-bold">Age Encrypt</span>
+          <span class="text-[11px] text-slate-500 mt-1">X25519 envelope cipher</span>
         </div>
-        <div class="hidden md:flex items-center justify-center text-slate-600 font-bold">&rarr;</div>
-        <div class="bg-dark-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center">
-          <span class="w-7 h-7 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center mb-2 font-bold">4</span>
-          <span class="text-slate-200 font-bold">Cloud Sync</span>
-          <span class="text-[11px] text-slate-500 mt-1">S3, R2, GDrive, MinIO &amp; prune retention</span>
+        <div class="hidden lg:flex items-center justify-center"><div class="flow-line w-full h-0.5 bg-slate-800 rounded"></div></div>
+        <div class="reveal glass-card rounded-xl p-4 flex flex-col items-center justify-center lg:col-span-1">
+          <span class="w-8 h-8 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center mb-2 font-bold">4</span>
+          <span class="text-slate-100 font-bold">Cloud Sync</span>
+          <span class="text-[11px] text-slate-500 mt-1">S3, R2, GDrive &amp; prune</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Storage Setup Guidelines (CRITICAL SECTION) -->
-  <section id="storage-guides" class="py-20 border-t border-slate-800 bg-dark-900/50">
+  <!-- Storage Setup Guidelines -->
+  <section id="storage-guides" class="py-16 sm:py-24 border-t border-slate-800/80 bg-dark-900/50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="text-center max-w-3xl mx-auto mb-12">
-        <h2 class="text-xs font-mono uppercase tracking-widest text-accent-400 font-bold mb-2">Official Configuration Guide</h2>
-        <h3 class="text-3xl sm:text-4xl font-extrabold text-white">How to Set Up Cloud Storage Providers</h3>
-        <p class="text-sm text-slate-400 mt-3">Follow these step-by-step instructions to obtain API keys and service credentials for your preferred storage destination.</p>
+      <div class="text-center max-w-3xl mx-auto mb-10 sm:mb-12 reveal">
+        <h2 class="text-xs font-mono uppercase tracking-widest text-accent-300 font-bold mb-2">Official Configuration Guide</h2>
+        <h3 class="fluid-h2 font-extrabold text-white">How to Set Up Cloud Storage Providers</h3>
+        <p class="text-sm text-slate-400 mt-3">Step-by-step instructions to obtain API keys and service credentials for your preferred storage destination.</p>
       </div>
 
       <!-- Storage Tabs Selector -->
-      <div class="flex items-center justify-center space-x-2 overflow-x-auto pb-4 mb-8">
-        <button onclick="switchTab('gdrive')" id="tab-btn-gdrive" class="storage-tab px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium transition-all tab-active flex items-center gap-2">
-          <span>📁 Google Drive (GCP)</span>
-        </button>
-        <button onclick="switchTab('r2')" id="tab-btn-r2" class="storage-tab px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-all flex items-center gap-2">
-          <span>⚡ Cloudflare R2</span>
-        </button>
-        <button onclick="switchTab('s3')" id="tab-btn-s3" class="storage-tab px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-all flex items-center gap-2">
-          <span>🪣 AWS S3</span>
-        </button>
-        <button onclick="switchTab('minio')" id="tab-btn-minio" class="storage-tab px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-all flex items-center gap-2">
-          <span>🏢 MinIO (Self-Hosted)</span>
-        </button>
-        <button onclick="switchTab('b2')" id="tab-btn-b2" class="storage-tab px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-all flex items-center gap-2">
-          <span>📦 Backblaze B2</span>
-        </button>
-        <button onclick="switchTab('local')" id="tab-btn-local" class="storage-tab px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-all flex items-center gap-2">
-          <span>💾 Local / NFS Mount</span>
-        </button>
+      <div class="flex items-center justify-start sm:justify-center gap-2 overflow-x-auto pb-4 mb-8 reveal -mx-4 px-4 sm:mx-0 sm:px-0" role="tablist">
+        <button onclick="switchTab('gdrive')" id="tab-btn-gdrive" role="tab" class="storage-tab whitespace-nowrap px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium transition-all tab-active flex items-center gap-2"><span>📁 Google Drive</span></button>
+        <button onclick="switchTab('r2')" id="tab-btn-r2" role="tab" class="storage-tab whitespace-nowrap px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-all flex items-center gap-2"><span>⚡ Cloudflare R2</span></button>
+        <button onclick="switchTab('s3')" id="tab-btn-s3" role="tab" class="storage-tab whitespace-nowrap px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-all flex items-center gap-2"><span>🪣 AWS S3</span></button>
+        <button onclick="switchTab('minio')" id="tab-btn-minio" role="tab" class="storage-tab whitespace-nowrap px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-all flex items-center gap-2"><span>🏢 MinIO</span></button>
+        <button onclick="switchTab('b2')" id="tab-btn-b2" role="tab" class="storage-tab whitespace-nowrap px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-all flex items-center gap-2"><span>📦 Backblaze B2</span></button>
+        <button onclick="switchTab('local')" id="tab-btn-local" role="tab" class="storage-tab whitespace-nowrap px-4 py-2.5 rounded-lg border border-slate-700 bg-dark-800 text-xs sm:text-sm font-medium text-slate-300 hover:text-white transition-all flex items-center gap-2"><span>💾 Local / NFS</span></button>
       </div>
 
-      <!-- Tab Content Area -->
       <div class="max-w-4xl mx-auto">
-
-        <!-- 1. GOOGLE DRIVE TAB -->
-        <div id="tab-content-gdrive" class="tab-panel glass-card rounded-2xl p-6 sm:p-8 space-y-6">
+        <!-- GOOGLE DRIVE -->
+        <div id="tab-content-gdrive" class="tab-panel glass-card rounded-2xl p-5 sm:p-8 space-y-6">
           <div class="flex items-center justify-between border-b border-slate-800 pb-4">
             <div>
-              <h4 class="text-xl font-bold text-white flex items-center gap-2">
-                <span>Google Drive Setup</span>
-                <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-mono">Service Account Auth</span>
-              </h4>
+              <h4 class="text-lg sm:text-xl font-bold text-white flex flex-wrap items-center gap-2"><span>Google Drive Setup</span><span class="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-mono">Service Account</span></h4>
               <p class="text-xs text-slate-400 mt-1">No interactive browser login required. Unattended, robust, and headless.</p>
             </div>
-            <span class="text-2xl">📁</span>
+            <span class="text-2xl hidden sm:inline">📁</span>
           </div>
-
           <div class="space-y-4 text-sm text-slate-300">
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">1</span>
-              <div>
-                <strong class="text-white">Create a Google Cloud Project:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">Go to <a href="https://console.cloud.google.com" target="_blank" class="text-brand-400 underline">Google Cloud Console</a>, click the project selector at the top, and click <strong>New Project</strong> (e.g. <code>dbk-backups</code>).</p>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">2</span>
-              <div>
-                <strong class="text-white">Enable the Google Drive API:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">Navigate to <strong>APIs &amp; Services &gt; Library</strong>. Search for <strong>Google Drive API</strong>, select it, and click <strong>Enable</strong>.</p>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">3</span>
-              <div>
-                <strong class="text-white">Create a Service Account &amp; Download Key:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">Go to <strong>APIs &amp; Services &gt; Credentials &gt; Create Credentials &gt; Service Account</strong>. Name it <code>dbk-backup-agent</code> and finish.</p>
-                <p class="text-xs text-slate-400 mt-1">Click on the newly created service account &gt; Go to the <strong>Keys</strong> tab &gt; <strong>Add Key &gt; Create new key &gt; JSON</strong>. This downloads your service account JSON file.</p>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">4</span>
-              <div>
-                <strong class="text-white">Share Target Folder with the Service Account:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">Copy the service account email (format: <code>dbk-agent@your-project.iam.gserviceaccount.com</code>).</p>
-                <p class="text-xs text-slate-400 mt-1">Open <a href="https://drive.google.com" target="_blank" class="text-brand-400 underline">Google Drive</a>, create a folder (or Shared Drive), right-click &gt; <strong>Share</strong> &gt; Paste the service account email with <strong>Editor</strong> permission.</p>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">5</span>
-              <div>
-                <strong class="text-white">Grab the Folder ID:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">Open the shared folder in your browser. Copy the ID string at the end of the URL:</p>
-                <div class="bg-dark-950 p-2.5 rounded font-mono text-xs text-slate-300 mt-1.5 border border-slate-800">
-                  https://drive.google.com/drive/folders/<span class="text-accent-400 font-bold">1A2B3C4D5E6F7G8H9I0JKLMNOPQRSTUVWXYZ</span>
-                </div>
-              </div>
-            </div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">1</span><div><strong class="text-white">Create a Google Cloud Project:</strong><p class="text-xs text-slate-400 mt-0.5">Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener" class="text-brand-300 underline">Google Cloud Console</a>, click the project selector, and click <strong>New Project</strong> (e.g. <code>dbk-backups</code>).</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">2</span><div><strong class="text-white">Enable the Google Drive API:</strong><p class="text-xs text-slate-400 mt-0.5">Navigate to <strong>APIs &amp; Services &gt; Library</strong>. Search for <strong>Google Drive API</strong>, select it, and click <strong>Enable</strong>.</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">3</span><div><strong class="text-white">Create a Service Account &amp; Download Key:</strong><p class="text-xs text-slate-400 mt-0.5">Go to <strong>Credentials &gt; Create Credentials &gt; Service Account</strong>. Name it <code>dbk-backup-agent</code> and finish.</p><p class="text-xs text-slate-400 mt-1">Open the service account &gt; <strong>Keys</strong> tab &gt; <strong>Add Key &gt; Create new key &gt; JSON</strong>. This downloads your service account JSON file.</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">4</span><div><strong class="text-white">Share Target Folder with the Service Account:</strong><p class="text-xs text-slate-400 mt-0.5">Copy the service account email (<code>dbk-agent@your-project.iam.gserviceaccount.com</code>).</p><p class="text-xs text-slate-400 mt-1">Open <a href="https://drive.google.com" target="_blank" rel="noopener" class="text-brand-300 underline">Google Drive</a>, create a folder, right-click &gt; <strong>Share</strong> &gt; paste the service account email with <strong>Editor</strong> permission.</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">5</span><div><strong class="text-white">Grab the Folder ID:</strong><p class="text-xs text-slate-400 mt-0.5">Open the shared folder in your browser. Copy the ID at the end of the URL:</p><div class="bg-dark-950 p-2.5 rounded font-mono text-xs text-slate-300 mt-1.5 border border-slate-800 overflow-x-auto">https://drive.google.com/drive/folders/<span class="text-accent-400 font-bold">1A2B3C4D5E6F7G8H9I0JKLMNOP</span></div></div></div>
           </div>
-
-          <!-- dbk TUI / CLI snippet -->
           <div class="border-t border-slate-800 pt-4">
             <span class="text-xs font-mono text-slate-400 block mb-2 font-bold uppercase tracking-wider">Adding into dbk:</span>
-            <div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 space-y-1">
+            <div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 space-y-1 overflow-x-auto">
               <p class="text-slate-400"># 1. Via TUI: Open dbk &rarr; Storage &rarr; Press 'a' &rarr; Select 'gdrive'</p>
-              <p class="text-slate-400"># 2. Paste Folder ID &amp; Service Account JSON content (stored securely in vault)</p>
+              <p class="text-slate-400"># 2. Paste Folder ID &amp; Service Account JSON (stored securely in vault)</p>
               <p class="text-accent-400">dbk secret set storage/gdrive/credentials --stdin &lt; service-account.json</p>
             </div>
           </div>
         </div>
 
-        <!-- 2. CLOUDFLARE R2 TAB -->
-        <div id="tab-content-r2" class="tab-panel glass-card rounded-2xl p-6 sm:p-8 space-y-6 hidden">
+        <!-- CLOUDFLARE R2 -->
+        <div id="tab-content-r2" class="tab-panel glass-card rounded-2xl p-5 sm:p-8 space-y-6 hidden">
           <div class="flex items-center justify-between border-b border-slate-800 pb-4">
             <div>
-              <h4 class="text-xl font-bold text-white flex items-center gap-2">
-                <span>Cloudflare R2 Setup</span>
-                <span class="text-xs bg-brand-500/20 text-brand-400 px-2 py-0.5 rounded font-mono">Zero Egress Fees</span>
-              </h4>
+              <h4 class="text-lg sm:text-xl font-bold text-white flex flex-wrap items-center gap-2"><span>Cloudflare R2 Setup</span><span class="text-xs bg-brand-500/20 text-brand-300 px-2 py-0.5 rounded font-mono">Zero Egress</span></h4>
               <p class="text-xs text-slate-400 mt-1">100% S3-compatible API with zero data transfer/egress fees.</p>
             </div>
-            <span class="text-2xl">⚡</span>
+            <span class="text-2xl hidden sm:inline">⚡</span>
           </div>
-
           <div class="space-y-4 text-sm text-slate-300">
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">1</span>
-              <div>
-                <strong class="text-white">Create an R2 Bucket:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">In the <a href="https://dash.cloudflare.com" target="_blank" class="text-brand-400 underline">Cloudflare Dashboard</a>, navigate to <strong>R2 Object Storage</strong> &gt; Click <strong>Create bucket</strong> (e.g. <code>dbk-production-backups</code>).</p>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">2</span>
-              <div>
-                <strong class="text-white">Generate R2 API Tokens:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">On the R2 overview page, click <strong>Manage R2 API Tokens</strong> in the right sidebar.</p>
-                <p class="text-xs text-slate-400 mt-1">Click <strong>Create API Token</strong> &gt; Permissions: <strong>Object Read &amp; Write</strong> &gt; Select your bucket &gt; Click <strong>Create API Token</strong>.</p>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">3</span>
-              <div>
-                <strong class="text-white">Note Down R2 Credentials:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">Copy the <strong>Access Key ID</strong>, <strong>Secret Access Key</strong>, and the S3 API endpoint URL:</p>
-                <div class="bg-dark-950 p-2.5 rounded font-mono text-xs text-slate-300 mt-1.5 border border-slate-800">
-                  Endpoint URL: <span class="text-accent-400 font-bold">https://&lt;ACCOUNT_ID&gt;.r2.cloudflarestorage.com</span>
-                </div>
-              </div>
-            </div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">1</span><div><strong class="text-white">Create an R2 Bucket:</strong><p class="text-xs text-slate-400 mt-0.5">In the <a href="https://dash.cloudflare.com" target="_blank" rel="noopener" class="text-brand-300 underline">Cloudflare Dashboard</a>, go to <strong>R2 Object Storage</strong> &gt; <strong>Create bucket</strong> (e.g. <code>dbk-production-backups</code>).</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">2</span><div><strong class="text-white">Generate R2 API Tokens:</strong><p class="text-xs text-slate-400 mt-0.5">On the R2 overview page, click <strong>Manage R2 API Tokens</strong>.</p><p class="text-xs text-slate-400 mt-1">Click <strong>Create API Token</strong> &gt; Permissions: <strong>Object Read &amp; Write</strong> &gt; select your bucket &gt; <strong>Create API Token</strong>.</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">3</span><div><strong class="text-white">Note Down R2 Credentials:</strong><p class="text-xs text-slate-400 mt-0.5">Copy the <strong>Access Key ID</strong>, <strong>Secret Access Key</strong>, and the S3 API endpoint URL:</p><div class="bg-dark-950 p-2.5 rounded font-mono text-xs text-slate-300 mt-1.5 border border-slate-800 overflow-x-auto">Endpoint: <span class="text-accent-400 font-bold">https://&lt;ACCOUNT_ID&gt;.r2.cloudflarestorage.com</span></div></div></div>
           </div>
-
           <div class="border-t border-slate-800 pt-4">
             <span class="text-xs font-mono text-slate-400 block mb-2 font-bold uppercase tracking-wider">dbk Storage Configuration:</span>
-            <div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 space-y-1 text-slate-300">
-              <p>Type: <span class="text-brand-400">s3</span></p>
+            <div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 space-y-1 text-slate-300 overflow-x-auto">
+              <p>Type: <span class="text-brand-300">s3</span></p>
               <p>Bucket: <span class="text-white">dbk-production-backups</span></p>
               <p>Region: <span class="text-white">auto</span></p>
               <p>Endpoint: <span class="text-accent-400">https://&lt;ACCOUNT_ID&gt;.r2.cloudflarestorage.com</span></p>
@@ -511,53 +533,24 @@
           </div>
         </div>
 
-        <!-- 3. AWS S3 TAB -->
-        <div id="tab-content-s3" class="tab-panel glass-card rounded-2xl p-6 sm:p-8 space-y-6 hidden">
+        <!-- AWS S3 -->
+        <div id="tab-content-s3" class="tab-panel glass-card rounded-2xl p-5 sm:p-8 space-y-6 hidden">
           <div class="flex items-center justify-between border-b border-slate-800 pb-4">
             <div>
-              <h4 class="text-xl font-bold text-white flex items-center gap-2">
-                <span>Amazon AWS S3 Setup</span>
-                <span class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded font-mono">IAM Restricted Policy</span>
-              </h4>
+              <h4 class="text-lg sm:text-xl font-bold text-white flex flex-wrap items-center gap-2"><span>Amazon AWS S3 Setup</span><span class="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono">IAM Restricted</span></h4>
               <p class="text-xs text-slate-400 mt-1">High durability, cross-region replication, and lifecycle policies.</p>
             </div>
-            <span class="text-2xl">🪣</span>
+            <span class="text-2xl hidden sm:inline">🪣</span>
           </div>
-
           <div class="space-y-4 text-sm text-slate-300">
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">1</span>
-              <div>
-                <strong class="text-white">Create S3 Bucket:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">In AWS Management Console, open S3 &gt; <strong>Create bucket</strong> (e.g. <code>my-company-db-backups</code>) in your target region (e.g. <code>us-east-1</code>).</p>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">2</span>
-              <div>
-                <strong class="text-white">Create Dedicated IAM User &amp; Credentials:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">Go to IAM &gt; Users &gt; Create user (e.g. <code>dbk-backup-worker</code>).</p>
-                <p class="text-xs text-slate-400 mt-1">Attach a scoped inline policy granting permissions only to your backup bucket:</p>
-                <div class="bg-dark-950 p-2.5 rounded font-mono text-[11px] text-slate-400 mt-1 border border-slate-800">
-                  Actions: s3:PutObject, s3:GetObject, s3:DeleteObject, s3:ListBucket
-                </div>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">3</span>
-              <div>
-                <strong class="text-white">Generate Access Keys:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">In the user details &gt; <strong>Security credentials &gt; Create access key &gt; CLI</strong>. Copy the Access Key ID and Secret Access Key.</p>
-              </div>
-            </div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">1</span><div><strong class="text-white">Create S3 Bucket:</strong><p class="text-xs text-slate-400 mt-0.5">In AWS Console open S3 &gt; <strong>Create bucket</strong> (e.g. <code>my-company-db-backups</code>) in your region (e.g. <code>us-east-1</code>).</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">2</span><div><strong class="text-white">Create Dedicated IAM User:</strong><p class="text-xs text-slate-400 mt-0.5">Go to IAM &gt; Users &gt; Create user (e.g. <code>dbk-backup-worker</code>).</p><p class="text-xs text-slate-400 mt-1">Attach a scoped inline policy for your bucket only:</p><div class="bg-dark-950 p-2.5 rounded font-mono text-[11px] text-slate-400 mt-1 border border-slate-800 overflow-x-auto">s3:PutObject, s3:GetObject, s3:DeleteObject, s3:ListBucket</div></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">3</span><div><strong class="text-white">Generate Access Keys:</strong><p class="text-xs text-slate-400 mt-0.5">User details &gt; <strong>Security credentials &gt; Create access key &gt; CLI</strong>. Copy the Access Key ID and Secret.</p></div></div>
           </div>
-
           <div class="border-t border-slate-800 pt-4">
             <span class="text-xs font-mono text-slate-400 block mb-2 font-bold uppercase tracking-wider">dbk Storage Configuration:</span>
-            <div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 space-y-1 text-slate-300">
-              <p>Type: <span class="text-brand-400">s3</span></p>
+            <div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 space-y-1 text-slate-300 overflow-x-auto">
+              <p>Type: <span class="text-brand-300">s3</span></p>
               <p>Bucket: <span class="text-white">my-company-db-backups</span></p>
               <p>Region: <span class="text-white">us-east-1</span></p>
               <p>Endpoint: <span class="text-slate-500">(leave empty for default AWS S3)</span></p>
@@ -567,97 +560,49 @@
           </div>
         </div>
 
-        <!-- 4. MINIO TAB -->
-        <div id="tab-content-minio" class="tab-panel glass-card rounded-2xl p-6 sm:p-8 space-y-6 hidden">
+        <!-- MINIO -->
+        <div id="tab-content-minio" class="tab-panel glass-card rounded-2xl p-5 sm:p-8 space-y-6 hidden">
           <div class="flex items-center justify-between border-b border-slate-800 pb-4">
             <div>
-              <h4 class="text-xl font-bold text-white flex items-center gap-2">
-                <span>MinIO Setup (Self-Hosted S3)</span>
-                <span class="text-xs bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded font-mono">100% Private Cloud</span>
-              </h4>
+              <h4 class="text-lg sm:text-xl font-bold text-white flex flex-wrap items-center gap-2"><span>MinIO (Self-Hosted S3)</span><span class="text-xs bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded font-mono">Private Cloud</span></h4>
               <p class="text-xs text-slate-400 mt-1">High-performance S3 object storage on your own hardware or Kubernetes.</p>
             </div>
-            <span class="text-2xl">🏢</span>
+            <span class="text-2xl hidden sm:inline">🏢</span>
           </div>
-
           <div class="space-y-4 text-sm text-slate-300">
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">1</span>
-              <div>
-                <strong class="text-white">Create Bucket in MinIO Console:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">Open your MinIO Console (e.g. <code>https://minio.internal:9001</code>), go to <strong>Buckets &gt; Create Bucket</strong> (e.g. <code>backups</code>).</p>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">2</span>
-              <div>
-                <strong class="text-white">Generate Service Access Key:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">Go to <strong>Access Keys &gt; Create Access Key</strong>. Copy the generated Access Key and Secret Key.</p>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">3</span>
-              <div>
-                <strong class="text-white">Configure Endpoint in dbk:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">Use your S3 API endpoint port (typically <code>9000</code>):</p>
-                <div class="bg-dark-950 p-2.5 rounded font-mono text-xs text-slate-300 mt-1.5 border border-slate-800">
-                  Endpoint: <span class="text-accent-400 font-bold">https://minio.yourcompany.com:9000</span> (Region: <code>us-east-1</code>)
-                </div>
-              </div>
-            </div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">1</span><div><strong class="text-white">Create Bucket in MinIO Console:</strong><p class="text-xs text-slate-400 mt-0.5">Open your MinIO Console (e.g. <code>https://minio.internal:9001</code>), go to <strong>Buckets &gt; Create Bucket</strong> (e.g. <code>backups</code>).</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">2</span><div><strong class="text-white">Generate Service Access Key:</strong><p class="text-xs text-slate-400 mt-0.5">Go to <strong>Access Keys &gt; Create Access Key</strong>. Copy the generated Access Key and Secret.</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">3</span><div><strong class="text-white">Configure Endpoint in dbk:</strong><p class="text-xs text-slate-400 mt-0.5">Use your S3 API endpoint port (typically <code>9000</code>):</p><div class="bg-dark-950 p-2.5 rounded font-mono text-xs text-slate-300 mt-1.5 border border-slate-800 overflow-x-auto">Endpoint: <span class="text-accent-400 font-bold">https://minio.yourcompany.com:9000</span> (Region: <code>us-east-1</code>)</div></div></div>
           </div>
         </div>
 
-        <!-- 5. BACKBLAZE B2 TAB -->
-        <div id="tab-content-b2" class="tab-panel glass-card rounded-2xl p-6 sm:p-8 space-y-6 hidden">
+        <!-- BACKBLAZE B2 -->
+        <div id="tab-content-b2" class="tab-panel glass-card rounded-2xl p-5 sm:p-8 space-y-6 hidden">
           <div class="flex items-center justify-between border-b border-slate-800 pb-4">
             <div>
-              <h4 class="text-xl font-bold text-white flex items-center gap-2">
-                <span>Backblaze B2 Setup</span>
-                <span class="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-mono">Affordable S3 Storage</span>
-              </h4>
-              <p class="text-xs text-slate-400 mt-1">S3 Compatible storage with simple, low storage costs.</p>
+              <h4 class="text-lg sm:text-xl font-bold text-white flex flex-wrap items-center gap-2"><span>Backblaze B2 Setup</span><span class="text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded font-mono">Affordable S3</span></h4>
+              <p class="text-xs text-slate-400 mt-1">S3-compatible storage with simple, low storage costs.</p>
             </div>
-            <span class="text-2xl">📦</span>
+            <span class="text-2xl hidden sm:inline">📦</span>
           </div>
-
           <div class="space-y-4 text-sm text-slate-300">
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">1</span>
-              <div>
-                <strong class="text-white">Create B2 Bucket:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">In Backblaze B2 Cloud Storage &gt; Buckets &gt; <strong>Create a Bucket</strong> (e.g. <code>my-db-backups</code>). Note the Endpoint listed on the bucket (e.g. <code>s3.us-west-004.backblazeb2.com</code>).</p>
-              </div>
-            </div>
-
-            <div class="flex gap-3">
-              <span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-400 font-bold flex items-center justify-center text-xs">2</span>
-              <div>
-                <strong class="text-white">Create Application Key:</strong>
-                <p class="text-xs text-slate-400 mt-0.5">Go to <strong>App Keys &gt; Add a New Application Key</strong>. Grant Read and Write access to your backup bucket. Note down <code>keyID</code> and <code>applicationKey</code>.</p>
-              </div>
-            </div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">1</span><div><strong class="text-white">Create B2 Bucket:</strong><p class="text-xs text-slate-400 mt-0.5">In Backblaze B2 &gt; Buckets &gt; <strong>Create a Bucket</strong> (e.g. <code>my-db-backups</code>). Note the Endpoint (e.g. <code>s3.us-west-004.backblazeb2.com</code>).</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">2</span><div><strong class="text-white">Create Application Key:</strong><p class="text-xs text-slate-400 mt-0.5">Go to <strong>App Keys &gt; Add a New Application Key</strong>. Grant Read and Write to your bucket. Note <code>keyID</code> and <code>applicationKey</code>.</p></div></div>
           </div>
         </div>
 
-        <!-- 6. LOCAL / NFS TAB -->
-        <div id="tab-content-local" class="tab-panel glass-card rounded-2xl p-6 sm:p-8 space-y-6 hidden">
+        <!-- LOCAL / NFS -->
+        <div id="tab-content-local" class="tab-panel glass-card rounded-2xl p-5 sm:p-8 space-y-6 hidden">
           <div class="flex items-center justify-between border-b border-slate-800 pb-4">
             <div>
-              <h4 class="text-xl font-bold text-white flex items-center gap-2">
-                <span>Local Directory &amp; NFS/NAS Setup</span>
-                <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-mono">Zero Network Latency</span>
-              </h4>
+              <h4 class="text-lg sm:text-xl font-bold text-white flex flex-wrap items-center gap-2"><span>Local Directory &amp; NFS/NAS</span><span class="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-mono">Zero Latency</span></h4>
               <p class="text-xs text-slate-400 mt-1">Direct disk storage, mounted Samba/NFS volumes, or external drives.</p>
             </div>
-            <span class="text-2xl">💾</span>
+            <span class="text-2xl hidden sm:inline">💾</span>
           </div>
-
           <div class="space-y-4 text-sm text-slate-300">
             <p>Local storage requires only a valid path on your file system:</p>
-            <div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 space-y-1">
+            <div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 space-y-1 overflow-x-auto">
               <p class="text-slate-400"># Common production directories:</p>
               <p class="text-emerald-400">/var/backups/databases</p>
               <p class="text-emerald-400">/mnt/storage/nas-backups</p>
@@ -665,141 +610,121 @@
             <p class="text-xs text-slate-400">dbk automatically creates directories if they do not exist and checks write permissions upon job registration.</p>
           </div>
         </div>
-
       </div>
     </div>
   </section>
 
-  <!-- Supported Databases Section -->
-  <section id="databases" class="py-20 border-t border-slate-800">
+  <!-- Supported Databases -->
+  <section id="databases" class="py-16 sm:py-24 border-t border-slate-800/80">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="text-center max-w-2xl mx-auto mb-16">
-        <h2 class="text-xs font-mono uppercase tracking-widest text-brand-400 font-bold mb-2">Engine Diversity</h2>
-        <h3 class="text-3xl sm:text-4xl font-extrabold text-white">Supported Database Engines</h3>
+      <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16 reveal">
+        <h2 class="text-xs font-mono uppercase tracking-widest text-brand-300 font-bold mb-2">Engine Diversity</h2>
+        <h3 class="fluid-h2 font-extrabold text-white">Supported Database Engines</h3>
         <p class="text-sm text-slate-400 mt-3">Tailored wizards that ask only for engine-relevant configuration.</p>
       </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <!-- PostgreSQL -->
-        <div class="glass-card rounded-xl p-6 border-t-2 border-t-blue-500">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
+        <div class="tilt glass-card rounded-xl p-6 border-t-2 border-t-blue-500 reveal">
           <h4 class="text-lg font-bold text-white mb-1">PostgreSQL</h4>
-          <span class="text-xs font-mono text-blue-400">pg_dump / Custom Formats</span>
-          <p class="text-xs text-slate-400 mt-3 leading-relaxed">
-            Automatic discovery of all databases on the PostgreSQL server. Supports standard text SQL streams or custom archive format. TLS enabled.
-          </p>
+          <span class="text-xs font-mono text-blue-300">pg_dump / Custom Formats</span>
+          <p class="text-xs text-slate-400 mt-3 leading-relaxed">Automatic discovery of all databases on the PostgreSQL server. Supports standard SQL streams or custom archive format. TLS enabled.</p>
         </div>
-
-        <!-- MySQL / MariaDB -->
-        <div class="glass-card rounded-xl p-6 border-t-2 border-t-amber-500">
+        <div class="tilt glass-card rounded-xl p-6 border-t-2 border-t-amber-500 reveal">
           <h4 class="text-lg font-bold text-white mb-1">MySQL &amp; MariaDB</h4>
-          <span class="text-xs font-mono text-amber-400">mysqldump / Quick Streaming</span>
-          <p class="text-xs text-slate-400 mt-3 leading-relaxed">
-            Auto-discovers schemas. Streams single-transaction consistent dumps with compression directly to target storage backends.
-          </p>
+          <span class="text-xs font-mono text-amber-300">mysqldump / Quick Streaming</span>
+          <p class="text-xs text-slate-400 mt-3 leading-relaxed">Auto-discovers schemas. Streams single-transaction consistent dumps with compression directly to target storage backends.</p>
         </div>
-
-        <!-- MongoDB -->
-        <div class="glass-card rounded-xl p-6 border-t-2 border-t-emerald-500">
+        <div class="tilt glass-card rounded-xl p-6 border-t-2 border-t-emerald-500 reveal">
           <h4 class="text-lg font-bold text-white mb-1">MongoDB</h4>
-          <span class="text-xs font-mono text-emerald-400">mongodump / Archive Stream</span>
-          <p class="text-xs text-slate-400 mt-3 leading-relaxed">
-            Connects via host/port or URI. Streams BSON archives for full collections, indexes, and metadata without intermediate disk usage.
-          </p>
+          <span class="text-xs font-mono text-emerald-300">mongodump / Archive Stream</span>
+          <p class="text-xs text-slate-400 mt-3 leading-relaxed">Connects via host/port or URI. Streams BSON archives for full collections, indexes, and metadata without intermediate disk usage.</p>
         </div>
-
-        <!-- SQLite -->
-        <div class="glass-card rounded-xl p-6 border-t-2 border-t-purple-500">
+        <div class="tilt glass-card rounded-xl p-6 border-t-2 border-t-purple-500 reveal">
           <h4 class="text-lg font-bold text-white mb-1">SQLite</h4>
-          <span class="text-xs font-mono text-purple-400">Zero Server Setup / Safe Vacuum</span>
-          <p class="text-xs text-slate-400 mt-3 leading-relaxed">
-            Single-field path wizard: only asks for the database file path. No host, user, or port fields displayed. Safe consistent backup copies.
-          </p>
+          <span class="text-xs font-mono text-purple-300">Zero Server / Safe Vacuum</span>
+          <p class="text-xs text-slate-400 mt-3 leading-relaxed">Single-field path wizard: only asks for the database file path. No host, user, or port fields. Safe consistent backup copies.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- CLI Commands Reference -->
-  <section id="cli" class="py-20 border-t border-slate-800 bg-dark-900/40">
+  <!-- CLI Commands -->
+  <section id="cli" class="py-16 sm:py-24 border-t border-slate-800/80 bg-dark-900/40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="text-center max-w-2xl mx-auto mb-16">
-        <h2 class="text-xs font-mono uppercase tracking-widest text-brand-400 font-bold mb-2">Automate Everything</h2>
-        <h3 class="text-3xl sm:text-4xl font-extrabold text-white">CLI Command Cheat Sheet</h3>
+      <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16 reveal">
+        <h2 class="text-xs font-mono uppercase tracking-widest text-brand-300 font-bold mb-2">Automate Everything</h2>
+        <h3 class="fluid-h2 font-extrabold text-white">CLI Command Cheat Sheet</h3>
         <p class="text-sm text-slate-400 mt-3">Run headless in cron jobs, CI/CD pipelines, Docker containers, or scripts.</p>
       </div>
-
-      <div class="max-w-4xl mx-auto space-y-4 font-mono text-xs sm:text-sm">
-        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <span class="text-accent-400 font-bold">dbk</span>
+      <div class="max-w-4xl mx-auto space-y-3 sm:space-y-4 font-mono text-xs sm:text-sm">
+        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 group reveal">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2"><span class="text-accent-400 font-bold break-all" data-cmd>dbk</span><button data-copy-prev class="copy-mini opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-brand-300" aria-label="Copy command">⧉</button></div>
             <p class="text-slate-400 font-sans text-xs mt-0.5">Launches the full interactive Bubble Tea TUI interface</p>
           </div>
-          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded">Interactive</span>
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded self-start whitespace-nowrap">Interactive</span>
         </div>
-
-        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <span class="text-accent-400 font-bold">dbk run &lt;job-name&gt;</span>
+        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 group reveal">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2"><span class="text-accent-400 font-bold break-all" data-cmd>dbk run &lt;job-name&gt;</span><button data-copy-prev class="copy-mini opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-brand-300" aria-label="Copy command">⧉</button></div>
             <p class="text-slate-400 font-sans text-xs mt-0.5">Runs on-demand headless backup for a job and exits (pass <code>--quiet --json</code> for scripts)</p>
           </div>
-          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded">Headless CLI</span>
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded self-start whitespace-nowrap">Headless CLI</span>
         </div>
-
-        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <span class="text-accent-400 font-bold">dbk restore &lt;job-name&gt;</span>
+        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 group reveal">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2"><span class="text-accent-400 font-bold break-all" data-cmd>dbk restore &lt;job-name&gt;</span><button data-copy-prev class="copy-mini opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-brand-300" aria-label="Copy command">⧉</button></div>
             <p class="text-slate-400 font-sans text-xs mt-0.5">Interactively lists historical backup snapshots and safely restores into target database</p>
           </div>
-          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded">Disaster Recovery</span>
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded self-start whitespace-nowrap">Disaster Recovery</span>
         </div>
-
-        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <span class="text-accent-400 font-bold">dbk schedule install &lt;job-name&gt; --at "0 2 * * *"</span>
+        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 group reveal">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2"><span class="text-accent-400 font-bold break-all" data-cmd>dbk schedule install &lt;job-name&gt; --at "0 2 * * *"</span><button data-copy-prev class="copy-mini opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-brand-300" aria-label="Copy command">⧉</button></div>
             <p class="text-slate-400 font-sans text-xs mt-0.5">Registers unattended backup timer with OS scheduler (systemd timer, cron, or Task Scheduler)</p>
           </div>
-          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded">OS Scheduling</span>
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded self-start whitespace-nowrap">OS Scheduling</span>
         </div>
-
-        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <span class="text-accent-400 font-bold">dbk update</span>
+        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 group reveal">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2"><span class="text-accent-400 font-bold break-all" data-cmd>dbk update</span><button data-copy-prev class="copy-mini opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-brand-300" aria-label="Copy command">⧉</button></div>
             <p class="text-slate-400 font-sans text-xs mt-0.5">Checks GitHub for newer releases, verifies SHA-256 digest, and atomically upgrades binary in-place</p>
           </div>
-          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded">Self-Updater</span>
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded self-start whitespace-nowrap">Self-Updater</span>
         </div>
-
-        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <span class="text-accent-400 font-bold">dbk config export --encrypt-with-passphrase</span>
+        <div class="glass-card rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 group reveal">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2"><span class="text-accent-400 font-bold break-all" data-cmd>dbk config export --encrypt-with-passphrase</span><button data-copy-prev class="copy-mini opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-brand-300" aria-label="Copy command">⧉</button></div>
             <p class="text-slate-400 font-sans text-xs mt-0.5">Exports full configuration and vault secrets into an encrypted portable transfer bundle</p>
           </div>
-          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded">Migration / Backup</span>
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded self-start whitespace-nowrap">Migration / Backup</span>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Quickstart & Installation -->
-  <section id="install" class="py-20 border-t border-slate-800">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-      <h2 class="text-xs font-mono uppercase tracking-widest text-brand-400 font-bold mb-2">Get Started in Seconds</h2>
-      <h3 class="text-3xl sm:text-4xl font-extrabold text-white mb-6">Install dbk on Your Machine</h3>
+  <section id="install" class="relative py-16 sm:py-24 border-t border-slate-800/80 overflow-hidden">
+    <div class="aurora top-0 left-1/2 -translate-x-1/2 w-[560px] h-[300px] bg-brand-600/25"></div>
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <div class="reveal">
+        <h2 class="text-xs font-mono uppercase tracking-widest text-brand-300 font-bold mb-2">Get Started in Seconds</h2>
+        <h3 class="fluid-h2 font-extrabold text-white mb-6">Install dbk on Your Machine</h3>
+      </div>
 
-      <div class="max-w-2xl mx-auto bg-dark-900 border border-slate-700/80 rounded-xl p-4 text-left font-mono text-xs sm:text-sm shadow-xl mb-8">
+      <div class="max-w-2xl mx-auto bg-dark-900 border border-slate-700/80 rounded-xl p-4 text-left font-mono text-xs sm:text-sm shadow-xl mb-8 grad-border reveal overflow-x-auto">
         <p class="text-slate-400 text-xs mb-2"># Install latest binary directly via verified installer:</p>
-        <p class="text-accent-400 select-all">$ curl -fsSL https://raw.githubusercontent.com/tanzid64/tui-db-manager/main/install.sh | sh</p>
-        <p class="text-slate-400 text-xs mt-4 mb-2"># Or install with Go toolchain:</p>
-        <p class="text-brand-300 select-all">$ go install github.com/tanzid64/tui-db-manager/cmd/dbk@latest</p>
-        <p class="text-slate-400 text-xs mt-4 mb-2"># Launch dbk:</p>
+        <p class="text-accent-400 select-all mb-4">$ curl -fsSL https://raw.githubusercontent.com/tanzid64/tui-db-manager/main/install.sh | sh</p>
+        <p class="text-slate-400 text-xs mb-2"># Or install with Go toolchain:</p>
+        <p class="text-brand-200 select-all mb-4">$ go install github.com/tanzid64/tui-db-manager/cmd/dbk@latest</p>
+        <p class="text-slate-400 text-xs mb-2"># Launch dbk:</p>
         <p class="text-white select-all">$ dbk</p>
       </div>
 
-      <div class="flex flex-wrap items-center justify-center gap-4">
-        <a href="https://github.com/tanzid64/tui-db-manager/releases" target="_blank" class="px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-500 font-bold text-sm text-white shadow-lg shadow-brand-600/30 transition-all flex items-center gap-2">
-          <span>Download Pre-Built Binaries (v1.0.5)</span>
+      <div class="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-4 reveal">
+        <a href="https://github.com/tanzid64/tui-db-manager/releases" target="_blank" rel="noopener" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-500 font-bold text-sm text-white shadow-lg shadow-brand-600/30 transition-all hover:-translate-y-0.5 flex items-center justify-center gap-2">
+          <span>Download Binaries (v1.0.5)</span>
         </a>
-        <a href="https://github.com/tanzid64/tui-db-manager" target="_blank" class="px-6 py-3 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 font-bold text-sm text-white transition-all flex items-center gap-2">
+        <a href="https://github.com/tanzid64/tui-db-manager" target="_blank" rel="noopener" class="w-full sm:w-auto px-6 py-3 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 font-bold text-sm text-white transition-all flex items-center justify-center gap-2">
           <span>View Source on GitHub</span>
         </a>
       </div>
@@ -808,15 +733,11 @@
 
   <!-- Footer -->
   <footer class="border-t border-slate-800 py-10 bg-dark-950 text-slate-500 text-xs">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
       <div class="flex items-center space-x-2">
-        <span class="font-mono font-bold text-slate-200">dbk</span>
-        <span>&bull;</span>
-        <span>Released under the MIT License</span>
+        <span class="font-mono font-bold text-slate-200">dbk</span><span>&bull;</span><span>Released under the MIT License</span>
       </div>
-      <div>
-        Created with &hearts; by <a href="https://github.com/tanzid64" target="_blank" class="text-slate-300 hover:text-white underline">Tanzid Haque</a>
-      </div>
+      <div>Created with &hearts; by <a href="https://github.com/tanzid64" target="_blank" rel="noopener" class="text-slate-300 hover:text-white underline">Tanzid Haque</a></div>
       <div class="flex space-x-4">
         <a href="https://github.com/tanzid64/tui-db-manager/releases" class="hover:text-slate-300">Releases</a>
         <a href="https://github.com/tanzid64/tui-db-manager/issues" class="hover:text-slate-300">Issues</a>
@@ -825,48 +746,223 @@
     </div>
   </footer>
 
-  <!-- Toast Notification -->
-  <div id="copy-toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none bg-emerald-600 text-white px-4 py-2.5 rounded-lg shadow-xl text-xs font-medium flex items-center space-x-2">
+  <!-- Back to top -->
+  <button id="to-top" aria-label="Back to top" class="fixed bottom-6 right-6 z-40 w-11 h-11 rounded-full bg-brand-600 hover:bg-brand-500 text-white shadow-lg shadow-brand-600/40 flex items-center justify-center opacity-0 translate-y-4 pointer-events-none">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+  </button>
+
+  <!-- Toast -->
+  <div id="copy-toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-50 translate-y-20 opacity-0 transition-all duration-300 pointer-events-none bg-emerald-600 text-white px-4 py-2.5 rounded-lg shadow-xl text-xs font-medium flex items-center space-x-2">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-    <span>Command copied to clipboard!</span>
+    <span id="toast-msg">Copied to clipboard!</span>
   </div>
 
   <script>
-    function copyInstallCmd(btn) {
-      const cmd = "curl -fsSL https://raw.githubusercontent.com/tanzid64/tui-db-manager/main/install.sh | sh";
-      navigator.clipboard.writeText(cmd).then(() => {
-        const toast = document.getElementById('copy-toast');
+    (function () {
+      'use strict';
+      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      /* ---------- Toast + Copy ---------- */
+      function showToast(msg) {
+        var toast = document.getElementById('copy-toast');
+        if (!toast) return;
+        document.getElementById('toast-msg').textContent = msg || 'Copied to clipboard!';
         toast.classList.remove('translate-y-20', 'opacity-0');
-        setTimeout(() => {
-          toast.classList.add('translate-y-20', 'opacity-0');
-        }, 2500);
+        clearTimeout(toast._t);
+        toast._t = setTimeout(function () { toast.classList.add('translate-y-20', 'opacity-0'); }, 2200);
+      }
+      function copyText(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(text).catch(function () { fallbackCopy(text); });
+        }
+        fallbackCopy(text);
+        return Promise.resolve();
+      }
+      function fallbackCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+      // Buttons with data-copy="#selector"
+      document.querySelectorAll('.copy-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var sel = btn.getAttribute('data-copy');
+          var el = sel && document.querySelector(sel);
+          if (!el) return;
+          copyText(el.textContent.trim()).then(function () {
+            showToast('Command copied!');
+            var label = btn.querySelector('.copy-label');
+            if (label) { var o = label.textContent; label.textContent = 'Copied'; setTimeout(function () { label.textContent = o; }, 1500); }
+          });
+        });
       });
-    }
+      // Mini copy buttons next to CLI commands
+      document.querySelectorAll('[data-copy-prev]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var cmd = btn.closest('div').querySelector('[data-cmd]');
+          if (!cmd) return;
+          copyText(cmd.textContent.trim()).then(function () { showToast('Command copied!'); });
+        });
+      });
 
+      /* ---------- Mobile drawer ---------- */
+      var menuBtn = document.getElementById('menu-btn');
+      var drawer = document.getElementById('mobile-drawer');
+      var overlay = document.getElementById('mobile-overlay');
+      var iconOpen = document.getElementById('menu-icon-open');
+      var iconClose = document.getElementById('menu-icon-close');
+      function openMenu() {
+        drawer.classList.remove('translate-x-full');
+        overlay.classList.remove('opacity-0', 'pointer-events-none');
+        iconOpen.classList.add('hidden'); iconClose.classList.remove('hidden');
+        menuBtn.setAttribute('aria-expanded', 'true');
+        document.body.style.overflow = 'hidden';
+      }
+      function closeMenu() {
+        drawer.classList.add('translate-x-full');
+        overlay.classList.add('opacity-0', 'pointer-events-none');
+        iconOpen.classList.remove('hidden'); iconClose.classList.add('hidden');
+        menuBtn.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+      }
+      if (menuBtn) {
+        menuBtn.addEventListener('click', function () {
+          drawer.classList.contains('translate-x-full') ? openMenu() : closeMenu();
+        });
+        overlay.addEventListener('click', closeMenu);
+        document.querySelectorAll('.mobile-nav').forEach(function (a) { a.addEventListener('click', closeMenu); });
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+      }
+
+      /* ---------- Scroll progress + back to top ---------- */
+      var progress = document.getElementById('scroll-progress');
+      var toTop = document.getElementById('to-top');
+      function onScroll() {
+        var h = document.documentElement;
+        var scrolled = (h.scrollTop) / (h.scrollHeight - h.clientHeight);
+        if (progress) progress.style.width = (scrolled * 100) + '%';
+        if (toTop) {
+          if (h.scrollTop > 600) { toTop.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none'); }
+          else { toTop.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none'); }
+        }
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+      if (toTop) toTop.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' }); });
+
+      /* ---------- Scroll reveal ---------- */
+      var revealEls = document.querySelectorAll('.reveal');
+      if ('IntersectionObserver' in window && !reduceMotion) {
+        var io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (en) {
+            if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+          });
+        }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+        revealEls.forEach(function (el, i) { el.style.transitionDelay = ((i % 6) * 55) + 'ms'; io.observe(el); });
+      } else {
+        revealEls.forEach(function (el) { el.classList.add('in'); });
+      }
+
+      /* ---------- Scroll spy ---------- */
+      var sections = ['overview', 'how-it-works', 'storage-guides', 'databases', 'cli', 'install'];
+      var navLinks = document.querySelectorAll('.nav-link');
+      function spy() {
+        var pos = window.scrollY + 120;
+        var current = '';
+        sections.forEach(function (id) {
+          var sec = document.getElementById(id);
+          if (sec && sec.offsetTop <= pos) current = id;
+        });
+        navLinks.forEach(function (l) {
+          l.classList.toggle('active', l.getAttribute('href') === '#' + current);
+        });
+      }
+      window.addEventListener('scroll', spy, { passive: true });
+      spy();
+
+      /* ---------- Count-up stats ---------- */
+      var counted = false;
+      function runCounts() {
+        if (counted) return; counted = true;
+        document.querySelectorAll('[data-count]').forEach(function (el) {
+          var target = parseInt(el.getAttribute('data-count'), 10);
+          var suffix = el.getAttribute('data-suffix') || '';
+          if (reduceMotion || target === 0) { el.textContent = target + suffix; return; }
+          var start = 0, dur = 900, t0 = performance.now();
+          (function tick(now) {
+            var p = Math.min((now - t0) / dur, 1);
+            el.textContent = Math.round(start + (target - start) * p) + suffix;
+            if (p < 1) requestAnimationFrame(tick);
+          })(t0);
+        });
+      }
+      var statBand = document.querySelector('[data-count]');
+      if (statBand && 'IntersectionObserver' in window) {
+        var sIo = new IntersectionObserver(function (e) { if (e[0].isIntersecting) { runCounts(); sIo.disconnect(); } }, { threshold: 0.4 });
+        sIo.observe(statBand.closest('.grid'));
+      } else { runCounts(); }
+
+      /* ---------- Card tilt ---------- */
+      if (!reduceMotion && window.matchMedia('(pointer:fine)').matches) {
+        document.querySelectorAll('.tilt').forEach(function (card) {
+          card.addEventListener('mousemove', function (e) {
+            var r = card.getBoundingClientRect();
+            var px = (e.clientX - r.left) / r.width - 0.5;
+            var py = (e.clientY - r.top) / r.height - 0.5;
+            card.style.transform = 'perspective(800px) rotateX(' + (-py * 5) + 'deg) rotateY(' + (px * 6) + 'deg) translateY(-4px)';
+          });
+          card.addEventListener('mouseleave', function () { card.style.transform = ''; });
+        });
+      }
+
+      /* ---------- Typed terminal intro ---------- */
+      var typedEl = document.getElementById('typed-cmd');
+      var caret = document.getElementById('typed-caret');
+      var output = document.getElementById('terminal-output');
+      var fullCmd = 'dbk';
+      if (typedEl && output) {
+        if (reduceMotion) {
+          typedEl.textContent = fullCmd;
+          output.classList.remove('opacity-0');
+        } else {
+          var i = 0;
+          function type() {
+            if (i <= fullCmd.length) {
+              typedEl.textContent = fullCmd.slice(0, i);
+              i++;
+              setTimeout(type, 140);
+            } else {
+              setTimeout(function () {
+                output.classList.remove('opacity-0');
+                var rows = output.querySelectorAll('.job-row');
+                rows.forEach(function (row, idx) {
+                  row.style.opacity = '0';
+                  row.style.transform = 'translateX(-8px)';
+                  row.style.transition = 'opacity .4s ease, transform .4s ease';
+                  setTimeout(function () { row.style.opacity = '1'; row.style.transform = 'none'; }, 180 + idx * 140);
+                });
+                if (caret) setTimeout(function () { caret.style.display = 'none'; }, 1200);
+              }, 350);
+            }
+          }
+          setTimeout(type, 600);
+        }
+      }
+    })();
+
+    /* ---------- Storage tabs (global for inline onclick) ---------- */
     function switchTab(tabId) {
-      // Deactivate all tab buttons
-      document.querySelectorAll('.storage-tab').forEach(btn => {
-        btn.classList.remove('tab-active');
-        btn.classList.add('text-slate-300');
+      document.querySelectorAll('.storage-tab').forEach(function (btn) {
+        btn.classList.remove('tab-active'); btn.classList.add('text-slate-300');
+        btn.setAttribute('aria-selected', 'false');
       });
-
-      // Hide all panels
-      document.querySelectorAll('.tab-panel').forEach(panel => {
-        panel.classList.add('hidden');
-      });
-
-      // Activate selected tab button
-      const activeBtn = document.getElementById('tab-btn-' + tabId);
-      if (activeBtn) {
-        activeBtn.classList.add('tab-active');
-        activeBtn.classList.remove('text-slate-300');
-      }
-
-      // Show selected panel
-      const activePanel = document.getElementById('tab-content-' + tabId);
-      if (activePanel) {
-        activePanel.classList.remove('hidden');
-      }
+      document.querySelectorAll('.tab-panel').forEach(function (panel) { panel.classList.add('hidden'); });
+      var activeBtn = document.getElementById('tab-btn-' + tabId);
+      if (activeBtn) { activeBtn.classList.add('tab-active'); activeBtn.classList.remove('text-slate-300'); activeBtn.setAttribute('aria-selected', 'true'); }
+      var activePanel = document.getElementById('tab-content-' + tabId);
+      if (activePanel) { activePanel.classList.remove('hidden'); }
     }
   </script>
 </body>
