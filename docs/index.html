@@ -198,6 +198,7 @@
         </a>
         <a href="#databases" class="nav-link hover:text-white transition-colors">Databases</a>
         <a href="#cli" class="nav-link hover:text-white transition-colors">CLI</a>
+        <a href="#scheduling" class="nav-link hover:text-white transition-colors">Scheduling</a>
         <a href="#install" class="nav-link hover:text-white transition-colors">Install</a>
       </nav>
 
@@ -227,6 +228,7 @@
       <a href="#storage-guides" class="mobile-nav py-3 px-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors flex items-center gap-2">Storage Guides <span class="text-[10px] bg-accent-500/20 text-accent-300 px-1.5 py-0.5 rounded font-mono">Hot</span></a>
       <a href="#databases" class="mobile-nav py-3 px-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">Databases</a>
       <a href="#cli" class="mobile-nav py-3 px-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">CLI Commands</a>
+      <a href="#scheduling" class="mobile-nav py-3 px-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">Scheduling</a>
       <a href="#install" class="mobile-nav py-3 px-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">Quickstart</a>
     </nav>
     <div class="mt-auto pt-6 border-t border-slate-800 space-y-3">
@@ -698,6 +700,73 @@
             <p class="text-slate-400 font-sans text-xs mt-0.5">Exports full configuration and vault secrets into an encrypted portable transfer bundle</p>
           </div>
           <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-1 rounded self-start whitespace-nowrap">Migration / Backup</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Scheduling on cPanel & VPS -->
+  <section id="scheduling" class="py-16 sm:py-24 border-t border-slate-800/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16 reveal">
+        <h2 class="text-xs font-mono uppercase tracking-widest text-accent-300 font-bold mb-2">Unattended on Shared Hosting</h2>
+        <h3 class="fluid-h2 font-extrabold text-white">Scheduling on cPanel &amp; VPS</h3>
+        <p class="text-sm text-slate-400 mt-3">One command installs a self-contained schedule that runs identically under a VPS systemd timer and cPanel's minimal cron environment.</p>
+      </div>
+
+      <div class="max-w-4xl mx-auto space-y-6">
+        <!-- How it works -->
+        <div class="glass-card rounded-2xl p-5 sm:p-8 reveal">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div>
+              <h4 class="text-lg sm:text-xl font-bold text-white flex flex-wrap items-center gap-2"><span>How dbk schedules run</span><span class="text-xs bg-brand-500/20 text-brand-300 px-2 py-0.5 rounded font-mono">Wrapper Script</span></h4>
+              <p class="text-xs text-slate-400 mt-1">Cron and systemd both run with almost no environment — no login shell, a bare <code>PATH</code>, and no TTY. dbk compensates automatically.</p>
+            </div>
+            <span class="text-2xl hidden sm:inline">⏰</span>
+          </div>
+          <div class="space-y-4 text-sm text-slate-300 pt-4">
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">✓</span><div class="min-w-0 flex-1"><strong class="text-white">A per-job wrapper script is generated:</strong><p class="text-xs text-slate-400 mt-0.5">Install writes <code class="break-all">~/.config/dbk/schedules/dbk-&lt;job&gt;.sh</code> (mode <code>0700</code>), and the scheduler invokes that — not the binary directly.</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">✓</span><div class="min-w-0 flex-1"><strong class="text-white">PATH is baked in:</strong><p class="text-xs text-slate-400 mt-0.5">The wrapper exports your install-time <code>PATH</code> plus the standard system directories, so <code>mysqldump</code>, <code>pg_dump</code> and <code>mongodump</code> resolve even under cPanel cron.</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">✓</span><div class="min-w-0 flex-1"><strong class="text-white">The vault passphrase is supplied non-interactively:</strong><p class="text-xs text-slate-400 mt-0.5">Pass <code>--passphrase-file</code> (or export <code>DBK_PASSPHRASE</code>) so the job can unlock secrets without a prompt. If a vault exists and neither is set, install refuses up front instead of failing silently at run time.</p></div></div>
+          </div>
+        </div>
+
+        <!-- cPanel steps -->
+        <div class="glass-card rounded-2xl p-5 sm:p-8 reveal">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div>
+              <h4 class="text-lg sm:text-xl font-bold text-white flex flex-wrap items-center gap-2"><span>cPanel Setup</span><span class="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-mono">Crontab</span></h4>
+              <p class="text-xs text-slate-400 mt-1">Requires SSH access. cPanel has no systemd, so dbk falls back to the user crontab automatically.</p>
+            </div>
+            <span class="text-2xl hidden sm:inline">🧩</span>
+          </div>
+          <div class="space-y-4 text-sm text-slate-300 pt-4">
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">1</span><div class="min-w-0 flex-1"><strong class="text-white">Install the binary in your home directory:</strong><p class="text-xs text-slate-400 mt-0.5">Over SSH, run the installer or <code>go install</code>. Note the resolved path (e.g. <code class="break-all">~/bin/dbk</code>); the scheduler records it as an absolute path.</p></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">2</span><div class="min-w-0 flex-1"><strong class="text-white">Create a passphrase file (if you use a vault):</strong><p class="text-xs text-slate-400 mt-0.5">Store the vault passphrase in a <code>0600</code> file only your user can read.</p><div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 mt-1.5 overflow-x-auto"><p class="text-accent-400 break-all sm:break-normal select-all">printf '%s' 'your-vault-passphrase' &gt; ~/.dbk.pass &amp;&amp; chmod 600 ~/.dbk.pass</p></div></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">3</span><div class="min-w-0 flex-1"><strong class="text-white">Install the schedule:</strong><p class="text-xs text-slate-400 mt-0.5">This generates the wrapper and adds the crontab entry in one step.</p><div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 mt-1.5 overflow-x-auto"><p class="text-accent-400 break-all sm:break-normal select-all">dbk schedule install nightly --at "0 3 * * *" --passphrase-file ~/.dbk.pass</p></div></div></div>
+            <div class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-brand-600/30 text-brand-300 font-bold flex items-center justify-center text-xs">4</span><div class="min-w-0 flex-1"><strong class="text-white">Verify it registered:</strong><p class="text-xs text-slate-400 mt-0.5">Check with dbk, or open <strong>cPanel &rarr; Cron Jobs</strong> — you'll see a line pointing at the wrapper script.</p><div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 mt-1.5 space-y-1 overflow-x-auto"><p class="text-accent-400 break-all sm:break-normal select-all">dbk schedule status nightly</p><p class="text-slate-500 break-all sm:break-normal"># 0 3 * * * "/home/user/.config/dbk/schedules/dbk-nightly.sh" # dbk:job:nightly</p></div></div></div>
+          </div>
+          <div class="border-t border-slate-800 pt-4 mt-4">
+            <span class="text-xs font-mono text-slate-400 block mb-2 font-bold uppercase tracking-wider">Pin the PATH yourself (optional):</span>
+            <p class="text-xs text-slate-400 mb-2">If a client tool lives in an unusual location, override the baked-in <code>PATH</code> explicitly:</p>
+            <div class="bg-dark-950 p-3 rounded-lg font-mono text-xs border border-slate-800 overflow-x-auto"><p class="text-accent-400 break-all sm:break-normal select-all">dbk schedule install nightly --passphrase-file ~/.dbk.pass --path "/usr/local/bin:/usr/bin:/bin"</p></div>
+          </div>
+        </div>
+
+        <!-- VPS note + troubleshooting -->
+        <div class="grid sm:grid-cols-2 gap-6">
+          <div class="glass-card rounded-2xl p-5 sm:p-6 reveal">
+            <h4 class="text-base font-bold text-white flex items-center gap-2 mb-2"><span>🖥️</span><span>On a VPS</span></h4>
+            <p class="text-xs text-slate-400 leading-relaxed">dbk auto-detects a working user <strong>systemd</strong> instance and installs a timer + service there; otherwise it falls back to crontab. The same wrapper is used either way, so your jobs behave identically. For a headless VPS, enable lingering (<code>loginctl enable-linger $USER</code>) so user timers run without an active login session.</p>
+          </div>
+          <div class="glass-card rounded-2xl p-5 sm:p-6 reveal">
+            <h4 class="text-base font-bold text-white flex items-center gap-2 mb-2"><span>🛠️</span><span>Troubleshooting</span></h4>
+            <ul class="text-xs text-slate-400 leading-relaxed space-y-1.5 list-disc pl-4">
+              <li><strong class="text-slate-300">"client tool not found on PATH"</strong> — the dump tool isn't in a standard dir; re-install the schedule with <code>--path</code>.</li>
+              <li><strong class="text-slate-300">"no passphrase available"</strong> — the job has a vault but no <code>--passphrase-file</code> / <code>DBK_PASSPHRASE</code>; re-run install with one.</li>
+              <li><strong class="text-slate-300">Nothing runs</strong> — confirm the entry appears under cPanel &rarr; Cron Jobs, and that <code>~/.config/dbk/schedules/</code> holds the wrapper.</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
