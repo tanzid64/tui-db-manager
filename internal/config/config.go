@@ -24,6 +24,11 @@ type Job struct {
 	Conn      Conn      `yaml:"conn"`
 	Storage   string    `yaml:"storage"`
 	Retention Retention `yaml:"retention"`
+	Compress  bool      `yaml:"compress,omitempty"` // gzip-compress before upload
+	Encrypt   bool      `yaml:"encrypt,omitempty"`  // age-encrypt before upload
+	// EncryptRecipient is the age X25519 public key ("age1..."). Required when Encrypt is true.
+	// The corresponding identity (private key) lives in the vault under "job/<name>/age_identity".
+	EncryptRecipient string `yaml:"encrypt_recipient,omitempty"`
 }
 
 type Conn struct {
@@ -53,7 +58,7 @@ type StorageConfig struct {
 	Bucket         string `yaml:"bucket,omitempty"`
 	Region         string `yaml:"region,omitempty"`
 	Endpoint       string `yaml:"endpoint,omitempty"` // empty = AWS default
-	Prefix         string `yaml:"prefix,omitempty"`    // key prefix within the bucket
+	Prefix         string `yaml:"prefix,omitempty"`   // key prefix within the bucket
 	AccessKeyID    string `yaml:"access_key_id,omitempty"`
 	ForcePathStyle bool   `yaml:"force_path_style,omitempty"`
 	// SecretKeyRef is "env:NAME", "file:/path", or empty (meaning the vault key

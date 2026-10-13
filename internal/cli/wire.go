@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/spf13/cobra"
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
 	"github.com/tanzid64/tui-db-manager/internal/secretref"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
 	"github.com/tanzid64/tui-db-manager/internal/vault"
-	"github.com/spf13/cobra"
 )
 
 func buildBackend(ctx context.Context, sc config.StorageConfig, v *vault.Store) (storage.Backend, error) {
@@ -115,6 +115,20 @@ func resolvePassword(v *vault.Store) func(config.Job) (string, error) {
 			return "", nil
 		}
 		return secretref.Resolve(ref, lookup)
+	}
+}
+
+// resolveIdentity returns a closure that resolves a job's age identity (private key)
+// from the vault key "job/<name>/age_identity" for decrypting backups.
+func resolveIdentity(v *vault.Store) func(config.Job) (string, error) {
+	return func(j config.Job) (string, error) {
+		if v == nil {
+			return "", fmt.Errorf("vault is required to decrypt backup for job %q", j.Name)
+		}
+		if val, ok := v.Get("job/" + j.Name + "/age_identity"); ok {
+			return val, nil
+		}
+		return "", fmt.Errorf("age identity for job %q not found in vault (expected key %q)", j.Name, "job/"+j.Name+"/age_identity")
 	}
 }
 

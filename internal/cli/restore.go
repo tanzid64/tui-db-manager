@@ -1,9 +1,9 @@
 package cli
 
 import (
+	"github.com/spf13/cobra"
 	"github.com/tanzid64/tui-db-manager/internal/restore"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
-	"github.com/spf13/cobra"
 )
 
 func newRestoreCmd() *cobra.Command {
@@ -41,6 +41,7 @@ func newRestoreCmd() *cobra.Command {
 				Engine:          engineResolver(),
 				Backend:         func() storage.Backend { return be },
 				ResolvePassword: resolvePassword(v),
+				ResolveIdentity: resolveIdentity(v),
 				Log:             app.log,
 			}
 			return restore.Run(cmd.Context(), deps, args[0], at, to, yes)

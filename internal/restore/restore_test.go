@@ -1,6 +1,8 @@
 package restore
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -8,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"filippo.io/age"
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
 	"github.com/tanzid64/tui-db-manager/internal/logutil"
@@ -18,15 +21,16 @@ type recordEngine struct {
 	restoredInto string
 	restoredPath string
 	restoreErr   error
+	restoredData []byte
 }
 
-func (e *recordEngine) Name() string                                  { return "fake" }
-func (e *recordEngine) DefaultPort() int                              { return 0 }
-func (e *recordEngine) Detect() (string, error)                       { return "x", nil }
-func (e *recordEngine) Test(context.Context, db.Conn) error           { return nil }
+func (e *recordEngine) Name() string                                   { return "fake" }
+func (e *recordEngine) DefaultPort() int                               { return 0 }
+func (e *recordEngine) Detect() (string, error)                        { return "x", nil }
+func (e *recordEngine) Test(context.Context, db.Conn) error            { return nil }
 func (e *recordEngine) Dump(context.Context, db.Conn, io.Writer) error { return nil }
 func (e *recordEngine) Restore(_ context.Context, c db.Conn, r io.Reader) error {
-	io.ReadAll(r)
+	e.restoredData, _ = io.ReadAll(r)
 	e.restoredInto = c.Database
 	e.restoredPath = c.Path
 	return e.restoreErr
@@ -122,5 +126,101 @@ func baseDeps(t *testing.T, eng db.Engine) Deps {
 		Backend:         func() storage.Backend { return be },
 		ResolvePassword: func(config.Job) (string, error) { return "", nil },
 		Log:             logutil.New(io.Discard, logutil.LevelInfo),
+	}
+}
+
+func TestRunRestoreCompressedBackup(t *testing.T) {
+	eng := &recordEngine{}
+	d := baseDeps(t, eng)
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	gw.Write([]byte("COMPRESSED_SQL_DATA"))
+	gw.Close()
+	d.Backend().Put(context.Background(), "main/main-20261012-000000.sql.gz", bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+
+	if err := Run(context.Background(), d, "main", "main/main-20261012-000000.sql.gz", "", true); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if string(eng.restoredData) != "COMPRESSED_SQL_DATA" {
+		t.Fatalf("unexpected restored data: got %q, want %q", string(eng.restoredData), "COMPRESSED_SQL_DATA")
+	}
+}
+
+func TestRunRestoreEncryptedBackup(t *testing.T) {
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := &recordEngine{}
+	d := baseDeps(t, eng)
+	d.ResolveIdentity = func(config.Job) (string, error) { return id.String(), nil }
+
+	var buf bytes.Buffer
+	ew, err := age.Encrypt(&buf, id.Recipient())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ew.Write([]byte("ENCRYPTED_SQL_DATA"))
+	ew.Close()
+	d.Backend().Put(context.Background(), "main/main-20261012-000000.sql.age", bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+
+	if err := Run(context.Background(), d, "main", "main/main-20261012-000000.sql.age", "", true); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if string(eng.restoredData) != "ENCRYPTED_SQL_DATA" {
+		t.Fatalf("unexpected restored data: got %q, want %q", string(eng.restoredData), "ENCRYPTED_SQL_DATA")
+	}
+}
+
+func TestRunRestoreCompressedAndEncryptedBackup(t *testing.T) {
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := &recordEngine{}
+	d := baseDeps(t, eng)
+	d.ResolveIdentity = func(config.Job) (string, error) { return id.String(), nil }
+
+	// Write compressed then encrypted (matches backup order).
+	var buf bytes.Buffer
+	ew, err := age.Encrypt(&buf, id.Recipient())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw := gzip.NewWriter(ew)
+	gw.Write([]byte("COMPRESSED_AND_ENCRYPTED_SQL_DATA"))
+	gw.Close()
+	ew.Close()
+	d.Backend().Put(context.Background(), "main/main-20261012-000000.sql.gz.age", bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+
+	if err := Run(context.Background(), d, "main", "main/main-20261012-000000.sql.gz.age", "", true); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if string(eng.restoredData) != "COMPRESSED_AND_ENCRYPTED_SQL_DATA" {
+		t.Fatalf("unexpected restored data: got %q, want %q", string(eng.restoredData), "COMPRESSED_AND_ENCRYPTED_SQL_DATA")
+	}
+}
+
+func TestRunRestoreEncryptedBackupMissingIdentityFails(t *testing.T) {
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := &recordEngine{}
+	d := baseDeps(t, eng)
+	// d.ResolveIdentity is nil by default in baseDeps
+
+	var buf bytes.Buffer
+	ew, err := age.Encrypt(&buf, id.Recipient())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ew.Write([]byte("SECRET_DATA"))
+	ew.Close()
+	d.Backend().Put(context.Background(), "main/main-20261012-000000.sql.age", bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+
+	err = Run(context.Background(), d, "main", "main/main-20261012-000000.sql.age", "", true)
+	if err == nil {
+		t.Fatal("expected error when restoring encrypted backup without an identity resolver")
 	}
 }

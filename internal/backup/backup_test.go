@@ -2,6 +2,7 @@ package backup
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"filippo.io/age"
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
 	"github.com/tanzid64/tui-db-manager/internal/logutil"
@@ -18,10 +20,10 @@ import (
 // errEngine's Dump fails with a configurable error after an optional partial write.
 type errEngine struct{ dumpErr error }
 
-func (e *errEngine) Name() string                            { return "err" }
-func (e *errEngine) DefaultPort() int                        { return 0 }
-func (e *errEngine) Detect() (string, error)                 { return "x", nil }
-func (e *errEngine) Test(context.Context, db.Conn) error     { return nil }
+func (e *errEngine) Name() string                        { return "err" }
+func (e *errEngine) DefaultPort() int                    { return 0 }
+func (e *errEngine) Detect() (string, error)             { return "x", nil }
+func (e *errEngine) Test(context.Context, db.Conn) error { return nil }
 func (e *errEngine) Dump(_ context.Context, _ db.Conn, w io.Writer) error {
 	io.WriteString(w, "partial")
 	return e.dumpErr
@@ -37,7 +39,7 @@ func (b *failBackend) Get(context.Context, string) (io.ReadCloser, error)  { ret
 func (b *failBackend) List(context.Context, string) ([]storage.Object, error) {
 	return nil, b.err
 }
-func (b *failBackend) Delete(context.Context, string) error            { return b.err }
+func (b *failBackend) Delete(context.Context, string) error { return b.err }
 func (b *failBackend) Stat(context.Context, string) (storage.Object, error) {
 	return storage.Object{}, b.err
 }
@@ -104,10 +106,10 @@ func TestRunReportsUploadErrorAndDoesNotHang(t *testing.T) {
 
 type fakeEngine struct{ dumped string }
 
-func (f *fakeEngine) Name() string                            { return "fake" }
-func (f *fakeEngine) DefaultPort() int                        { return 0 }
-func (f *fakeEngine) Detect() (string, error)                 { return "x", nil }
-func (f *fakeEngine) Test(context.Context, db.Conn) error     { return nil }
+func (f *fakeEngine) Name() string                        { return "fake" }
+func (f *fakeEngine) DefaultPort() int                    { return 0 }
+func (f *fakeEngine) Detect() (string, error)             { return "x", nil }
+func (f *fakeEngine) Test(context.Context, db.Conn) error { return nil }
 func (f *fakeEngine) Dump(_ context.Context, _ db.Conn, w io.Writer) error {
 	_, err := io.WriteString(w, "DUMPDATA")
 	return err
@@ -176,5 +178,181 @@ func TestRunBackupWritesToBackend(t *testing.T) {
 	rc.Close()
 	if !bytes.Equal(got, []byte("DUMPDATA")) {
 		t.Fatalf("backend content mismatch: %q", got)
+	}
+}
+
+func TestRunBackupWithCompression(t *testing.T) {
+	cfg := &config.Config{
+		Version: 1,
+		Jobs: []config.Job{{
+			Name: "main", Engine: "fake", Storage: "local",
+			Conn: config.Conn{Database: "app"}, Compress: true,
+		}},
+		Storages: []config.StorageConfig{{Name: "local", Type: "local"}},
+	}
+	be := storage.NewLocal(t.TempDir())
+	deps := Deps{
+		Cfg:             cfg,
+		Engine:          func(string) (db.Engine, bool) { return &fakeEngine{}, true },
+		Backend:         func(config.StorageConfig) (storage.Backend, error) { return be, nil },
+		ResolvePassword: func(config.Job) (string, error) { return "", nil },
+		Now:             func() time.Time { return time.Date(2026, 10, 12, 3, 4, 5, 0, time.UTC) },
+		Log:             logutil.New(io.Discard, logutil.LevelInfo),
+	}
+	obj, err := Run(context.Background(), deps, "main")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.HasSuffix(obj.Key, ".sql.gz") {
+		t.Fatalf("expected key ending in .sql.gz, got %q", obj.Key)
+	}
+	rc, err := be.Get(context.Background(), obj.Key)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer rc.Close()
+	gr, err := gzip.NewReader(rc)
+	if err != nil {
+		t.Fatalf("gzip reader: %v", err)
+	}
+	defer gr.Close()
+	decompressed, err := io.ReadAll(gr)
+	if err != nil {
+		t.Fatalf("read decompressed: %v", err)
+	}
+	if !bytes.Equal(decompressed, []byte("DUMPDATA")) {
+		t.Fatalf("content mismatch: got %q", decompressed)
+	}
+}
+
+func TestRunBackupWithEncryption(t *testing.T) {
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Version: 1,
+		Jobs: []config.Job{{
+			Name: "main", Engine: "fake", Storage: "local",
+			Conn: config.Conn{Database: "app"}, Encrypt: true,
+			EncryptRecipient: id.Recipient().String(),
+		}},
+		Storages: []config.StorageConfig{{Name: "local", Type: "local"}},
+	}
+	be := storage.NewLocal(t.TempDir())
+	deps := Deps{
+		Cfg:             cfg,
+		Engine:          func(string) (db.Engine, bool) { return &fakeEngine{}, true },
+		Backend:         func(config.StorageConfig) (storage.Backend, error) { return be, nil },
+		ResolvePassword: func(config.Job) (string, error) { return "", nil },
+		Now:             func() time.Time { return time.Date(2026, 10, 12, 3, 4, 5, 0, time.UTC) },
+		Log:             logutil.New(io.Discard, logutil.LevelInfo),
+	}
+	obj, err := Run(context.Background(), deps, "main")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.HasSuffix(obj.Key, ".sql.age") {
+		t.Fatalf("expected key ending in .sql.age, got %q", obj.Key)
+	}
+	rc, err := be.Get(context.Background(), obj.Key)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer rc.Close()
+	raw, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("read raw: %v", err)
+	}
+	if bytes.Equal(raw, []byte("DUMPDATA")) {
+		t.Fatal("data was stored unencrypted")
+	}
+	dr, err := age.Decrypt(bytes.NewReader(raw), id)
+	if err != nil {
+		t.Fatalf("decrypt: %v", err)
+	}
+	decrypted, err := io.ReadAll(dr)
+	if err != nil {
+		t.Fatalf("read decrypted: %v", err)
+	}
+	if !bytes.Equal(decrypted, []byte("DUMPDATA")) {
+		t.Fatalf("content mismatch: got %q", decrypted)
+	}
+}
+
+func TestRunBackupWithCompressionAndEncryption(t *testing.T) {
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Version: 1,
+		Jobs: []config.Job{{
+			Name: "main", Engine: "fake", Storage: "local",
+			Conn: config.Conn{Database: "app"}, Compress: true, Encrypt: true,
+			EncryptRecipient: id.Recipient().String(),
+		}},
+		Storages: []config.StorageConfig{{Name: "local", Type: "local"}},
+	}
+	be := storage.NewLocal(t.TempDir())
+	deps := Deps{
+		Cfg:             cfg,
+		Engine:          func(string) (db.Engine, bool) { return &fakeEngine{}, true },
+		Backend:         func(config.StorageConfig) (storage.Backend, error) { return be, nil },
+		ResolvePassword: func(config.Job) (string, error) { return "", nil },
+		Now:             func() time.Time { return time.Date(2026, 10, 12, 3, 4, 5, 0, time.UTC) },
+		Log:             logutil.New(io.Discard, logutil.LevelInfo),
+	}
+	obj, err := Run(context.Background(), deps, "main")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.HasSuffix(obj.Key, ".sql.gz.age") {
+		t.Fatalf("expected key ending in .sql.gz.age, got %q", obj.Key)
+	}
+	rc, err := be.Get(context.Background(), obj.Key)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer rc.Close()
+	dr, err := age.Decrypt(rc, id)
+	if err != nil {
+		t.Fatalf("decrypt: %v", err)
+	}
+	gr, err := gzip.NewReader(dr)
+	if err != nil {
+		t.Fatalf("gzip reader: %v", err)
+	}
+	defer gr.Close()
+	decompressed, err := io.ReadAll(gr)
+	if err != nil {
+		t.Fatalf("read decompressed: %v", err)
+	}
+	if !bytes.Equal(decompressed, []byte("DUMPDATA")) {
+		t.Fatalf("content mismatch: got %q", decompressed)
+	}
+}
+
+func TestRunBackupEncryptWithoutRecipientFails(t *testing.T) {
+	cfg := &config.Config{
+		Version: 1,
+		Jobs: []config.Job{{
+			Name: "main", Engine: "fake", Storage: "local",
+			Conn: config.Conn{Database: "app"}, Encrypt: true,
+		}},
+		Storages: []config.StorageConfig{{Name: "local", Type: "local"}},
+	}
+	be := storage.NewLocal(t.TempDir())
+	deps := Deps{
+		Cfg:             cfg,
+		Engine:          func(string) (db.Engine, bool) { return &fakeEngine{}, true },
+		Backend:         func(config.StorageConfig) (storage.Backend, error) { return be, nil },
+		ResolvePassword: func(config.Job) (string, error) { return "", nil },
+		Now:             func() time.Time { return time.Date(2026, 10, 12, 3, 4, 5, 0, time.UTC) },
+		Log:             logutil.New(io.Discard, logutil.LevelInfo),
+	}
+	_, err := Run(context.Background(), deps, "main")
+	if err == nil {
+		t.Fatal("expected error when encrypt is true but encrypt_recipient is empty")
 	}
 }

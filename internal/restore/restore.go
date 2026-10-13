@@ -3,12 +3,14 @@ package restore
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
 	"github.com/tanzid64/tui-db-manager/internal/logutil"
+	"github.com/tanzid64/tui-db-manager/internal/pipeline"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
 )
 
@@ -18,6 +20,9 @@ type Deps struct {
 	Backend         func() storage.Backend
 	backend         storage.Backend // test convenience; unused in production path
 	ResolvePassword func(config.Job) (string, error)
+	// ResolveIdentity resolves the age identity (private key) from the vault
+	// key "job/<name>/age_identity". Required when restoring an encrypted backup.
+	ResolveIdentity func(config.Job) (string, error)
 	Log             *logutil.Logger
 }
 
@@ -92,7 +97,37 @@ func Run(ctx context.Context, d Deps, jobName, atKey, toDatabase string, confirm
 		return err
 	}
 	defer rc.Close()
-	if err := eng.Restore(ctx, conn, rc); err != nil {
+
+	// Detect compression/encryption from the key suffix and build the
+	// reverse pipeline: decrypt → decompress → engine.Restore.
+	_, compressed, encrypted := pipeline.ParseKeySuffix(atKey)
+
+	var r io.Reader = rc
+	if encrypted {
+		if d.ResolveIdentity == nil {
+			return fmt.Errorf("backup %q is encrypted but no identity resolver is configured", atKey)
+		}
+		identity, err := d.ResolveIdentity(job)
+		if err != nil {
+			return fmt.Errorf("resolve age identity: %w", err)
+		}
+		d.Log.Redact(identity)
+		dr, err := pipeline.DecryptReader(r, identity)
+		if err != nil {
+			return fmt.Errorf("decrypt: %w", err)
+		}
+		r = dr
+	}
+	if compressed {
+		gr, err := pipeline.DecompressReader(r)
+		if err != nil {
+			return fmt.Errorf("decompress: %w", err)
+		}
+		defer gr.Close()
+		r = gr
+	}
+
+	if err := eng.Restore(ctx, conn, r); err != nil {
 		return fmt.Errorf("restore: %w", logutil.MaskError(err, pw))
 	}
 	d.Log.Infof("restore complete")
