@@ -3,8 +3,11 @@
 [![Go Version](https://img.shields.io/badge/go-1.26+-00ADD8.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/tanzid64/tui-db-manager?include_prereleases)](https://github.com/tanzid64/tui-db-manager/releases)
+[![Documentation](https://img.shields.io/badge/docs-web%20guide-purple.svg)](docs/index.html)
 
 `dbk` is a secure, automated database backup and restore manager. It pairs an interactive, keyboard-driven terminal dashboard (**Bubble Tea / Lipgloss**) with a scriptable, headless CLI designed for automated cron jobs, systemd timers, and CI/CD pipelines.
+
+👉 **[View the Web Landing Page & Storage Setup Guide](docs/index.html)** (Google Drive, Cloudflare R2, AWS S3, MinIO, Backblaze B2).
 
 ---
 
