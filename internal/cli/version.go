@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"github.com/tanzid64/tui-db-manager/internal/buildinfo"
 	"github.com/spf13/cobra"
+	"github.com/tanzid64/tui-db-manager/internal/buildinfo"
 )
 
 func newVersionCmd() *cobra.Command {

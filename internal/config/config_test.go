@@ -117,3 +117,68 @@ func TestSaveLoadWithNotifiers(t *testing.T) {
 		t.Fatalf("email notifier mismatch: %+v", mail)
 	}
 }
+
+func TestConfigMerge(t *testing.T) {
+	c1 := &Config{
+		Jobs: []Job{
+			{Name: "j1", Engine: "mysql"},
+			{Name: "j2", Engine: "postgres"},
+		},
+		Storages: []StorageConfig{
+			{Name: "s1", Type: "local", Path: "/path1"},
+		},
+		Notifiers: []NotifierConfig{
+			{Name: "n1", Type: "webhook", URL: "http://old"},
+		},
+	}
+
+	c2 := &Config{
+		Jobs: []Job{
+			{Name: "j2", Engine: "sqlite"}, // Conflict with j2
+			{Name: "j3", Engine: "mongodb"},
+		},
+		Storages: []StorageConfig{
+			{Name: "s1", Type: "local", Path: "/path2"}, // Conflict with s1
+			{Name: "s2", Type: "s3", Bucket: "b"},
+		},
+		Notifiers: []NotifierConfig{
+			{Name: "n1", Type: "webhook", URL: "http://new"}, // Conflict with n1
+			{Name: "n2", Type: "telegram", ChatID: "123"},
+		},
+	}
+
+	// 1. Merge without overwrite
+	res := c1.Merge(c2, false)
+	if res.JobsAdded != 1 || res.JobsSkipped != 1 || res.JobsUpdated != 0 {
+		t.Fatalf("unexpected jobs merge: %+v", res)
+	}
+	if res.StoragesAdded != 1 || res.StoragesSkipped != 1 || res.StoragesUpdated != 0 {
+		t.Fatalf("unexpected storages merge: %+v", res)
+	}
+	if res.NotifiersAdded != 1 || res.NotifiersSkipped != 1 || res.NotifiersUpdated != 0 {
+		t.Fatalf("unexpected notifiers merge: %+v", res)
+	}
+	// Check j2 is still postgres
+	j2, _ := c1.Job("j2")
+	if j2.Engine != "postgres" {
+		t.Fatalf("expected j2 to remain postgres, got %s", j2.Engine)
+	}
+
+	// 2. Merge with overwrite
+	res = c1.Merge(c2, true)
+	if res.JobsUpdated != 2 || res.JobsSkipped != 0 {
+		t.Fatalf("unexpected jobs overwrite: %+v", res)
+	}
+	j2, _ = c1.Job("j2")
+	if j2.Engine != "sqlite" {
+		t.Fatalf("expected j2 to be overwritten with sqlite, got %s", j2.Engine)
+	}
+	s1, _ := c1.Storage("s1")
+	if s1.Path != "/path2" {
+		t.Fatalf("expected s1 to be overwritten, got %s", s1.Path)
+	}
+	n1, _ := c1.Notifier("n1")
+	if n1.URL != "http://new" {
+		t.Fatalf("expected n1 to be overwritten, got %s", n1.URL)
+	}
+}

@@ -68,6 +68,62 @@ func (s *Store) Get(key string) (string, bool) { v, ok := s.secrets[key]; return
 func (s *Store) Set(key, val string)           { s.secrets[key] = val }
 func (s *Store) Delete(key string)             { delete(s.secrets, key) }
 
+// All returns a copy of all secrets stored in the vault.
+func (s *Store) All() map[string]string {
+	out := make(map[string]string, len(s.secrets))
+	for k, v := range s.secrets {
+		out[k] = v
+	}
+	return out
+}
+
+// Merge merges secrets into the store. If overwrite is true, existing keys are overwritten.
+func (s *Store) Merge(secrets map[string]string, overwrite bool) (added, updated, skipped int) {
+	for k, v := range secrets {
+		if _, exists := s.secrets[k]; exists {
+			if overwrite {
+				s.secrets[k] = v
+				updated++
+			} else {
+				skipped++
+			}
+		} else {
+			s.secrets[k] = v
+			added++
+		}
+	}
+	return added, updated, skipped
+}
+
+// Export re-encrypts all secrets in the store using a transfer passphrase and default KDF params.
+func (s *Store) Export(transferPassphrase string) ([]byte, error) {
+	p := DefaultKDFParams()
+	key := DeriveKey(transferPassphrase, p)
+	pt, err := json.Marshal(s.secrets)
+	if err != nil {
+		return nil, err
+	}
+	return seal(key, pt, p)
+}
+
+// ImportDecrypt decrypts an exported secret blob using the transfer passphrase.
+func ImportDecrypt(transferPassphrase string, blob []byte) (map[string]string, error) {
+	p, err := peekParams(blob)
+	if err != nil {
+		return nil, err
+	}
+	key := DeriveKey(transferPassphrase, p)
+	pt, _, err := open(key, blob)
+	if err != nil {
+		return nil, err
+	}
+	var secrets map[string]string
+	if err := json.Unmarshal(pt, &secrets); err != nil {
+		return nil, err
+	}
+	return secrets, nil
+}
+
 func (s *Store) Save() error {
 	pt, err := json.Marshal(s.secrets)
 	if err != nil {

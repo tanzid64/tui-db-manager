@@ -13,88 +13,88 @@ import (
 const CurrentVersion = 1
 
 type Config struct {
-	Version   int              `yaml:"version"`
-	Jobs      []Job            `yaml:"jobs"`
-	Storages  []StorageConfig  `yaml:"storages"`
-	Notifiers []NotifierConfig `yaml:"notifiers,omitempty"`
+	Version   int              `yaml:"version" json:"version"`
+	Jobs      []Job            `yaml:"jobs" json:"jobs"`
+	Storages  []StorageConfig  `yaml:"storages" json:"storages"`
+	Notifiers []NotifierConfig `yaml:"notifiers,omitempty" json:"notifiers,omitempty"`
 }
 
 type Job struct {
-	Name      string    `yaml:"name"`
-	Engine    string    `yaml:"engine"` // mysql|postgres|mongodb|sqlite
-	Conn      Conn      `yaml:"conn"`
-	Storage   string    `yaml:"storage"`
-	Retention Retention `yaml:"retention"`
-	Compress  bool      `yaml:"compress,omitempty"` // gzip-compress before upload
-	Encrypt   bool      `yaml:"encrypt,omitempty"`  // age-encrypt before upload
+	Name      string    `yaml:"name" json:"name"`
+	Engine    string    `yaml:"engine" json:"engine"` // mysql|postgres|mongodb|sqlite
+	Conn      Conn      `yaml:"conn" json:"conn"`
+	Storage   string    `yaml:"storage" json:"storage"`
+	Retention Retention `yaml:"retention" json:"retention"`
+	Compress  bool      `yaml:"compress,omitempty" json:"compress,omitempty"` // gzip-compress before upload
+	Encrypt   bool      `yaml:"encrypt,omitempty" json:"encrypt,omitempty"`   // age-encrypt before upload
 	// EncryptRecipient is the age X25519 public key ("age1..."). Required when Encrypt is true.
 	// The corresponding identity (private key) lives in the vault under "job/<name>/age_identity".
-	EncryptRecipient string   `yaml:"encrypt_recipient,omitempty"`
-	Notifiers        []string `yaml:"notifiers,omitempty"`
+	EncryptRecipient string   `yaml:"encrypt_recipient,omitempty" json:"encrypt_recipient,omitempty"`
+	Notifiers        []string `yaml:"notifiers,omitempty" json:"notifiers,omitempty"`
 }
 
 type Conn struct {
-	Host     string `yaml:"host,omitempty"`
-	Port     int    `yaml:"port,omitempty"`
-	User     string `yaml:"user,omitempty"`
-	Database string `yaml:"database,omitempty"`
-	Path     string `yaml:"path,omitempty"` // sqlite file path
-	TLS      bool   `yaml:"tls,omitempty"`
+	Host     string `yaml:"host,omitempty" json:"host,omitempty"`
+	Port     int    `yaml:"port,omitempty" json:"port,omitempty"`
+	User     string `yaml:"user,omitempty" json:"user,omitempty"`
+	Database string `yaml:"database,omitempty" json:"database,omitempty"`
+	Path     string `yaml:"path,omitempty" json:"path,omitempty"` // sqlite file path
+	TLS      bool   `yaml:"tls,omitempty" json:"tls,omitempty"`
 	// PasswordRef optionally resolves the password from "env:VAR" or "file:/path"
 	// instead of the vault. Empty means "look in the vault".
-	PasswordRef string `yaml:"password_ref,omitempty"`
+	PasswordRef string `yaml:"password_ref,omitempty" json:"password_ref,omitempty"`
 }
 
 type Retention struct {
-	KeepLast int `yaml:"keep_last,omitempty"`
+	KeepLast int `yaml:"keep_last,omitempty" json:"keep_last,omitempty"`
 }
 
 type StorageConfig struct {
-	Name string `yaml:"name"`
-	Type string `yaml:"type"` // local | s3
+	Name string `yaml:"name" json:"name"`
+	Type string `yaml:"type" json:"type"` // local | s3
 
 	// Local backend.
-	Path string `yaml:"path,omitempty"`
+	Path string `yaml:"path,omitempty" json:"path,omitempty"`
 
 	// S3-family backend (AWS S3, Cloudflare R2, MinIO, Backblaze B2, Wasabi).
-	Bucket         string `yaml:"bucket,omitempty"`
-	Region         string `yaml:"region,omitempty"`
-	Endpoint       string `yaml:"endpoint,omitempty"` // empty = AWS default
-	Prefix         string `yaml:"prefix,omitempty"`   // key prefix within the bucket
-	AccessKeyID    string `yaml:"access_key_id,omitempty"`
-	ForcePathStyle bool   `yaml:"force_path_style,omitempty"`
+	Bucket         string `yaml:"bucket,omitempty" json:"bucket,omitempty"`
+	Region         string `yaml:"region,omitempty" json:"region,omitempty"`
+	Endpoint       string `yaml:"endpoint,omitempty" json:"endpoint,omitempty"` // empty = AWS default
+	Prefix         string `yaml:"prefix,omitempty" json:"prefix,omitempty"`     // key prefix within the bucket
+	AccessKeyID    string `yaml:"access_key_id,omitempty" json:"access_key_id,omitempty"`
+	ForcePathStyle bool   `yaml:"force_path_style,omitempty" json:"force_path_style,omitempty"`
 	// SecretKeyRef is "env:NAME", "file:/path", or empty (meaning the vault key
 	// "storage/<name>/secret_key"). The raw secret key is never stored here.
-	SecretKeyRef string `yaml:"secret_key_ref,omitempty"`
+	SecretKeyRef string `yaml:"secret_key_ref,omitempty" json:"secret_key_ref,omitempty"`
 
 	// Google Drive backend (service account).
-	FolderID string `yaml:"folder_id,omitempty"` // destination folder (My Drive or Shared Drive)
+	FolderID string `yaml:"folder_id,omitempty" json:"folder_id,omitempty"` // destination folder (My Drive or Shared Drive)
 	// CredentialsRef is "env:NAME", "file:/path", or empty (meaning the vault key
 	// "storage/<name>/credentials"). The raw service-account JSON is never stored here.
-	CredentialsRef string `yaml:"credentials_ref,omitempty"`
+	CredentialsRef string `yaml:"credentials_ref,omitempty" json:"credentials_ref,omitempty"`
 }
 
 type NotifierConfig struct {
-	Name string `yaml:"name"`
-	Type string `yaml:"type"` // telegram | email | webhook
+	Name string `yaml:"name" json:"name"`
+	Type string `yaml:"type" json:"type"` // telegram | email | webhook
 
 	// Telegram
-	BotTokenRef string `yaml:"bot_token_ref,omitempty"` // env:/file: or vault key "notifier/<name>/bot_token"
-	ChatID      string `yaml:"chat_id,omitempty"`
+	BotTokenRef string `yaml:"bot_token_ref,omitempty" json:"bot_token_ref,omitempty"` // env:/file: or vault key "notifier/<name>/bot_token"
+	ChatID      string `yaml:"chat_id,omitempty" json:"chat_id,omitempty"`
 
 	// Email
-	Host        string   `yaml:"host,omitempty"`
-	Port        int      `yaml:"port,omitempty"`
-	From        string   `yaml:"from,omitempty"`
-	To          []string `yaml:"to,omitempty"`
-	Username    string   `yaml:"username,omitempty"`
-	PasswordRef string   `yaml:"password_ref,omitempty"` // env:/file: or vault key "notifier/<name>/password"
-	TLS         bool     `yaml:"tls,omitempty"`          // implicit TLS (port 465)
+	Host        string   `yaml:"host,omitempty" json:"host,omitempty"`
+	Port        int      `yaml:"port,omitempty" json:"port,omitempty"`
+	From        string   `yaml:"from,omitempty" json:"from,omitempty"`
+	To          []string `yaml:"to,omitempty" json:"to,omitempty"`
+	Username    string   `yaml:"username,omitempty" json:"username,omitempty"`
+	PasswordRef string   `yaml:"password_ref,omitempty" json:"password_ref,omitempty"` // env:/file: or vault key "notifier/<name>/password"
+	TLS         bool     `yaml:"tls,omitempty" json:"tls,omitempty"`                   // implicit TLS (port 465)
 
 	// Webhook
-	URL      string            `yaml:"url,omitempty"`
-	Headers  map[string]string `yaml:"headers,omitempty"`
-	TokenRef string            `yaml:"token_ref,omitempty"` // env:/file: or vault key "notifier/<name>/token"
+	URL      string            `yaml:"url,omitempty" json:"url,omitempty"`
+	Headers  map[string]string `yaml:"headers,omitempty" json:"headers,omitempty"`
+	TokenRef string            `yaml:"token_ref,omitempty" json:"token_ref,omitempty"` // env:/file: or vault key "notifier/<name>/token"
 }
 
 func fileName(dir string) string { return filepath.Join(dir, "config.yaml") }
@@ -157,4 +157,86 @@ func (c *Config) Notifier(name string) (NotifierConfig, bool) {
 		}
 	}
 	return NotifierConfig{}, false
+}
+
+type MergeResult struct {
+	JobsAdded        int
+	JobsUpdated      int
+	JobsSkipped      int
+	StoragesAdded    int
+	StoragesUpdated  int
+	StoragesSkipped  int
+	NotifiersAdded   int
+	NotifiersUpdated int
+	NotifiersSkipped int
+}
+
+// Merge merges another config into c.
+func (c *Config) Merge(other *Config, overwrite bool) MergeResult {
+	var res MergeResult
+	if other == nil {
+		return res
+	}
+
+	for _, oj := range other.Jobs {
+		found := false
+		for i, j := range c.Jobs {
+			if j.Name == oj.Name {
+				found = true
+				if overwrite {
+					c.Jobs[i] = oj
+					res.JobsUpdated++
+				} else {
+					res.JobsSkipped++
+				}
+				break
+			}
+		}
+		if !found {
+			c.Jobs = append(c.Jobs, oj)
+			res.JobsAdded++
+		}
+	}
+
+	for _, os := range other.Storages {
+		found := false
+		for i, s := range c.Storages {
+			if s.Name == os.Name {
+				found = true
+				if overwrite {
+					c.Storages[i] = os
+					res.StoragesUpdated++
+				} else {
+					res.StoragesSkipped++
+				}
+				break
+			}
+		}
+		if !found {
+			c.Storages = append(c.Storages, os)
+			res.StoragesAdded++
+		}
+	}
+
+	for _, on := range other.Notifiers {
+		found := false
+		for i, n := range c.Notifiers {
+			if n.Name == on.Name {
+				found = true
+				if overwrite {
+					c.Notifiers[i] = on
+					res.NotifiersUpdated++
+				} else {
+					res.NotifiersSkipped++
+				}
+				break
+			}
+		}
+		if !found {
+			c.Notifiers = append(c.Notifiers, on)
+			res.NotifiersAdded++
+		}
+	}
+
+	return res
 }

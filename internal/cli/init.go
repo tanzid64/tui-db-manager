@@ -1,9 +1,9 @@
 package cli
 
 import (
+	"github.com/spf13/cobra"
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/vault"
-	"github.com/spf13/cobra"
 )
 
 func newInitCmd() *cobra.Command {
