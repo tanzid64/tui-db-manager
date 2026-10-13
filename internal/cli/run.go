@@ -11,7 +11,7 @@ import (
 )
 
 func newRunCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "run <job>",
 		Short: "Run a backup job now",
 		Args:  cobra.ExactArgs(1),
@@ -43,8 +43,13 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cmd.Printf("backup written: %s (%d bytes)\n", obj.Key, obj.Size)
+			quiet, _ := cmd.Flags().GetBool("quiet")
+			if !quiet {
+				cmd.Printf("backup written: %s (%d bytes)\n", obj.Key, obj.Size)
+			}
 			return nil
 		},
 	}
+	cmd.Flags().Bool("quiet", false, "suppress non-essential output (for unattended/scheduled runs)")
+	return cmd
 }

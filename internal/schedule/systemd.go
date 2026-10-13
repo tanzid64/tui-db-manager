@@ -91,7 +91,7 @@ func (s *SystemdScheduler) Install(ctx context.Context, job string, opts Install
 	}
 	onCalendar := CronToOnCalendar(expr)
 
-	cmdStr, err := BuildCommand(job, opts)
+	wrapper, err := writeWrapper(job, opts)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ After=network.target
 [Service]
 Type=oneshot
 ExecStart=%s
-`, job, cmdStr)
+`, job, wrapper)
 
 	timerContent := fmt.Sprintf(`[Unit]
 Description=dbk backup timer for %s
@@ -145,8 +145,19 @@ func (s *SystemdScheduler) Remove(ctx context.Context, job string) error {
 
 	_, _ = s.executor(ctx, nil, "systemctl", "--user", "disable", "--now", timerName)
 
+	// Remove the wrapper script referenced by the service unit's ExecStart.
+	servicePath := filepath.Join(s.unitDir, serviceName)
+	if b, err := os.ReadFile(servicePath); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			if wrapper, ok := strings.CutPrefix(strings.TrimSpace(line), "ExecStart="); ok {
+				_ = os.Remove(wrapper)
+				break
+			}
+		}
+	}
+
 	_ = os.Remove(filepath.Join(s.unitDir, timerName))
-	_ = os.Remove(filepath.Join(s.unitDir, serviceName))
+	_ = os.Remove(servicePath)
 
 	_, _ = s.executor(ctx, nil, "systemctl", "--user", "daemon-reload")
 	return nil

@@ -52,3 +52,12 @@ func TestRunCommandSQLiteEndToEnd(t *testing.T) {
 		t.Fatalf("expected a backup file under %s/main", backups)
 	}
 }
+
+// The scheduler writes `run <job> --quiet --json` into every wrapper, so the
+// run command must register a --quiet flag or scheduled runs fail to parse.
+func TestRunCommandHasQuietFlag(t *testing.T) {
+	cmd := newRunCmd()
+	if cmd.Flags().Lookup("quiet") == nil {
+		t.Fatal("run command is missing the --quiet flag")
+	}
+}

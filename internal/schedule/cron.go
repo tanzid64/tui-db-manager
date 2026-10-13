@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -84,13 +85,13 @@ func (c *CronScheduler) Install(ctx context.Context, job string, opts InstallOpt
 		return fmt.Errorf("invalid cron expression %q: expected 5 fields (minute hour day month weekday)", expr)
 	}
 
-	cmdStr, err := BuildCommand(job, opts)
+	wrapper, err := writeWrapper(job, opts)
 	if err != nil {
 		return err
 	}
 
 	tag := tagForJob(job)
-	newLine := fmt.Sprintf("%s %s %s", expr, cmdStr, tag)
+	newLine := fmt.Sprintf("%s %q %s", expr, wrapper, tag)
 
 	lines, err := c.readCrontab(ctx)
 	if err != nil {
@@ -120,6 +121,10 @@ func (c *CronScheduler) Remove(ctx context.Context, job string) error {
 	for _, l := range lines {
 		if strings.Contains(l, tag) {
 			found = true
+			// Remove the wrapper script referenced by this line.
+			if wrapper, ok := firstQuotedField(l); ok {
+				_ = os.Remove(wrapper)
+			}
 			continue
 		}
 		if strings.TrimSpace(l) != "" {

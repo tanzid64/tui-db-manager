@@ -35,7 +35,105 @@ func TestBuildCommand(t *testing.T) {
 	}
 }
 
+func TestEffectivePath(t *testing.T) {
+	// An explicit override is used verbatim.
+	if got := effectivePath("/a:/b", "/opt/bin", "/custom/path"); got != "/custom/path" {
+		t.Fatalf("override not honored: got %q", got)
+	}
+
+	// Without override: install-time PATH entries come first, standard dirs
+	// and the binary's own directory are merged in, deduped, no empty segments.
+	got := effectivePath("/usr/bin:/home/u/bin", "/home/u/bin", "")
+	if !strings.HasPrefix(got, "/usr/bin:/home/u/bin") {
+		t.Fatalf("current PATH entries should come first: %q", got)
+	}
+	if !strings.Contains(got, "/usr/local/bin") {
+		t.Fatalf("standard dir /usr/local/bin missing: %q", got)
+	}
+	if n := strings.Count(":"+got+":", ":/home/u/bin:"); n != 1 {
+		t.Fatalf("binDir should appear exactly once, got %d: %q", n, got)
+	}
+	for _, p := range strings.Split(got, ":") {
+		if p == "" {
+			t.Fatalf("empty PATH segment in %q", got)
+		}
+	}
+}
+
+func TestCronInstallWritesWrapper(t *testing.T) {
+	cfgDir := t.TempDir()
+	var crontabContent string
+	execMock := func(ctx context.Context, stdin []byte, name string, args ...string) ([]byte, error) {
+		if name == "crontab" && len(args) == 1 {
+			switch args[0] {
+			case "-l":
+				return []byte(crontabContent), nil
+			case "-":
+				crontabContent = string(stdin)
+			case "-r":
+				crontabContent = ""
+			}
+		}
+		return nil, nil
+	}
+
+	cs := NewCronScheduler(execMock)
+	opts := InstallOptions{
+		Expression:     "0 3 * * *",
+		BinaryPath:     "/usr/local/bin/dbk",
+		ConfigDir:      cfgDir,
+		PassphraseFile: filepath.Join(cfgDir, "pass"),
+	}
+	if err := cs.Install(context.Background(), "orders", opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	wrapper := filepath.Join(cfgDir, "schedules", "dbk-orders.sh")
+	info, err := os.Stat(wrapper)
+	if err != nil {
+		t.Fatalf("wrapper script not written: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Fatalf("wrapper perm = %o, want 700", perm)
+	}
+
+	b, _ := os.ReadFile(wrapper)
+	content := string(b)
+	if !strings.HasPrefix(content, "#!/bin/sh") {
+		t.Fatalf("wrapper missing shebang: %s", content)
+	}
+	if !strings.Contains(content, "export PATH=") {
+		t.Fatalf("wrapper missing PATH export: %s", content)
+	}
+	if !strings.Contains(content, `"/usr/local/bin/dbk"`) {
+		t.Fatalf("wrapper missing dbk binary: %s", content)
+	}
+	if !strings.Contains(content, `run "orders" --quiet --json`) {
+		t.Fatalf("wrapper missing run command: %s", content)
+	}
+	if !strings.Contains(content, "--passphrase-file") {
+		t.Fatalf("wrapper missing passphrase flag: %s", content)
+	}
+
+	// The crontab line must invoke the wrapper, not dbk directly.
+	if !strings.Contains(crontabContent, wrapper) {
+		t.Fatalf("crontab does not reference wrapper %q: %s", wrapper, crontabContent)
+	}
+	if !strings.Contains(crontabContent, "# dbk:job:orders") {
+		t.Fatalf("crontab missing job marker: %s", crontabContent)
+	}
+
+	// Remove must delete the wrapper script too.
+	if err := cs.Remove(context.Background(), "orders"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if _, err := os.Stat(wrapper); !os.IsNotExist(err) {
+		t.Fatalf("wrapper script not deleted on remove")
+	}
+}
+
 func TestCronSchedulerInstallRemoveStatus(t *testing.T) {
+	cfgDir := t.TempDir()
 	var crontabContent string
 
 	execMock := func(ctx context.Context, stdin []byte, name string, args ...string) ([]byte, error) {
@@ -71,6 +169,7 @@ func TestCronSchedulerInstallRemoveStatus(t *testing.T) {
 	opts := InstallOptions{
 		Expression: "15 2 * * *",
 		BinaryPath: "/bin/dbk",
+		ConfigDir:  cfgDir,
 	}
 	if err := cs.Install(ctx, "orders", opts); err != nil {
 		t.Fatalf("install: %v", err)
@@ -164,6 +263,7 @@ func TestSystemdSchedulerInstallRemoveStatus(t *testing.T) {
 		return nil, nil
 	}
 
+	cfgDir := t.TempDir()
 	ss := NewSystemdScheduler(unitDir, execMock)
 	ctx := context.Background()
 
@@ -171,6 +271,7 @@ func TestSystemdSchedulerInstallRemoveStatus(t *testing.T) {
 	opts := InstallOptions{
 		Expression: "0 3 * * *",
 		BinaryPath: "/usr/bin/dbk",
+		ConfigDir:  cfgDir,
 	}
 	if err := ss.Install(ctx, "billing", opts); err != nil {
 		t.Fatalf("install: %v", err)
@@ -178,13 +279,17 @@ func TestSystemdSchedulerInstallRemoveStatus(t *testing.T) {
 
 	servicePath := filepath.Join(unitDir, "dbk-billing.service")
 	timerPath := filepath.Join(unitDir, "dbk-billing.timer")
+	wrapperPath := filepath.Join(cfgDir, "schedules", "dbk-billing.sh")
 
 	serviceBytes, err := os.ReadFile(servicePath)
 	if err != nil {
 		t.Fatalf("read service unit: %v", err)
 	}
-	if !strings.Contains(string(serviceBytes), "ExecStart=\"/usr/bin/dbk\" run \"billing\" --quiet --json") {
-		t.Fatalf("unexpected service content: %s", string(serviceBytes))
+	if !strings.Contains(string(serviceBytes), "ExecStart="+wrapperPath) {
+		t.Fatalf("service should exec the wrapper %q: %s", wrapperPath, string(serviceBytes))
+	}
+	if _, err := os.Stat(wrapperPath); err != nil {
+		t.Fatalf("wrapper script not written: %v", err)
 	}
 
 	timerBytes, err := os.ReadFile(timerPath)
@@ -213,6 +318,9 @@ func TestSystemdSchedulerInstallRemoveStatus(t *testing.T) {
 	}
 	if _, err := os.Stat(timerPath); !os.IsNotExist(err) {
 		t.Fatal("expected timer file to be deleted")
+	}
+	if _, err := os.Stat(wrapperPath); !os.IsNotExist(err) {
+		t.Fatal("expected wrapper script to be deleted")
 	}
 
 	// Status after remove
