@@ -35,6 +35,12 @@ func (s StorageScreen) Update(msg tea.Msg) (StorageScreen, tea.Cmd) {
 	if s.isWizardOpen {
 		var cmd tea.Cmd
 		s.wizard, cmd = s.wizard.Update(msg)
+		if s.wizard.Done {
+			s.isWizardOpen = false
+			s.handleStorageWizardFinish(s.wizard.Values)
+		} else if s.wizard.Canceled {
+			s.isWizardOpen = false
+		}
 		return s, cmd
 	}
 
@@ -132,52 +138,48 @@ func (s *StorageScreen) openAddStorageWizard() {
 	s.wizard = NewWizard(
 		"Add Storage Destination",
 		steps,
-		func(vals map[string]string) tea.Cmd {
-			name := strings.TrimSpace(vals["name"])
-			if name == "" {
-				s.statusMsg = styleError.Render("Storage name cannot be empty")
-				s.isWizardOpen = false
-				return nil
-			}
-
-			stType := vals["type"]
-			sc := config.StorageConfig{
-				Name: name,
-				Type: stType,
-			}
-
-			switch stType {
-			case "local":
-				sc.Path = vals["path"]
-			case "s3":
-				sc.Bucket = vals["bucket"]
-				sc.Region = vals["region"]
-				sc.Endpoint = vals["endpoint"]
-				sc.AccessKeyID = vals["access_key"]
-				if sec := vals["secret_key"]; sec != "" && s.svc.Vault != nil {
-					s.svc.Vault.Set("storage/"+name+"/secret_key", sec)
-					_ = s.svc.Vault.Save()
-				}
-			case "gdrive":
-				sc.FolderID = vals["folder_id"]
-				if creds := vals["credentials"]; creds != "" && s.svc.Vault != nil {
-					s.svc.Vault.Set("storage/"+name+"/credentials", creds)
-					_ = s.svc.Vault.Save()
-				}
-			}
-
-			s.svc.Cfg.Storages = append(s.svc.Cfg.Storages, sc)
-			_ = s.svc.SaveConfig()
-			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added storage backend %q", name))
-			s.isWizardOpen = false
-			return nil
-		},
-		func() tea.Cmd {
-			s.isWizardOpen = false
-			return nil
-		},
+		nil,
+		nil,
 	)
 	s.isWizardOpen = true
+}
+
+func (s *StorageScreen) handleStorageWizardFinish(vals map[string]string) {
+	name := strings.TrimSpace(vals["name"])
+	if name == "" {
+		s.statusMsg = styleError.Render("Storage name cannot be empty")
+		return
+	}
+
+	stType := vals["type"]
+	sc := config.StorageConfig{
+		Name: name,
+		Type: stType,
+	}
+
+	switch stType {
+	case "local":
+		sc.Path = vals["path"]
+	case "s3":
+		sc.Bucket = vals["bucket"]
+		sc.Region = vals["region"]
+		sc.Endpoint = vals["endpoint"]
+		sc.AccessKeyID = vals["access_key"]
+		if sec := vals["secret_key"]; sec != "" && s.svc.Vault != nil {
+			s.svc.Vault.Set("storage/"+name+"/secret_key", sec)
+			_ = s.svc.Vault.Save()
+		}
+	case "gdrive":
+		sc.FolderID = vals["folder_id"]
+		if creds := vals["credentials"]; creds != "" && s.svc.Vault != nil {
+			s.svc.Vault.Set("storage/"+name+"/credentials", creds)
+			_ = s.svc.Vault.Save()
+		}
+	}
+
+	s.svc.Cfg.Storages = append(s.svc.Cfg.Storages, sc)
+	_ = s.svc.SaveConfig()
+	s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added storage backend %q", name))
 }
 
 func (s StorageScreen) View() string {

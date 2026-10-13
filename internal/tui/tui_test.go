@@ -294,3 +294,85 @@ func TestTUIServiceConfigAndBundle(t *testing.T) {
 		t.Fatalf("expected job 'test-job' imported")
 	}
 }
+
+func TestJobsScreenWizardEnterCompletion(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	if err := svc.CreateVault("vault-pass"); err != nil {
+		t.Fatalf("CreateVault: %v", err)
+	}
+
+	screen := NewJobsScreen(svc, nil, nil)
+
+	// Press 'a' to open wizard
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if !screen.isWizardOpen {
+		t.Fatalf("expected wizard to be open")
+	}
+
+	// Step 1: Job Identity
+	// Field 0: Name (text) -> enter "my-prod-db"
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("my-prod-db")})
+	// Press Enter to move to Field 1 (engine select)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveField != 1 {
+		t.Fatalf("expected active field 1, got %d", screen.wizard.ActiveField)
+	}
+	// Press Enter on Field 1 (last field of Step 1) -> advances to Step 2
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveStep != 1 {
+		t.Fatalf("expected step 1 (Database Connection), got %d", screen.wizard.ActiveStep)
+	}
+
+	// Step 2: Database Connection
+	// Fields: 0: host, 1: port, 2: user, 3: password, 4: database, 5: path, 6: tls
+	// Press Enter 6 times to move across fields to field 6 (tls checkbox)
+	for f := 0; f < 6; f++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+	if screen.wizard.ActiveField != 6 {
+		t.Fatalf("expected active field 6 (tls), got %d", screen.wizard.ActiveField)
+	}
+	// Press Enter on Field 6 (last field of Step 2) -> advances to Step 3
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveStep != 2 {
+		t.Fatalf("expected step 2 (Storage & Retention), got %d", screen.wizard.ActiveStep)
+	}
+
+	// Step 3: Storage & Retention
+	// Fields: 0: storage (select), 1: keep_last (text), 2: compress (checkbox), 3: encrypt (checkbox)
+	// Press Enter on field 0 -> field 1
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveField != 1 {
+		t.Fatalf("expected active field 1, got %d", screen.wizard.ActiveField)
+	}
+	// Press Enter on field 1 -> field 2
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveField != 2 {
+		t.Fatalf("expected active field 2, got %d", screen.wizard.ActiveField)
+	}
+	// Press Enter on field 2 -> field 3 (Age Encrypt)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveField != 3 {
+		t.Fatalf("expected active field 3 (encrypt), got %d", screen.wizard.ActiveField)
+	}
+
+	// Now press Enter on field 3 (final field of final step)
+	// This was where the user was stuck!
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Verify wizard is now closed and Done
+	if screen.isWizardOpen {
+		t.Fatalf("expected wizard to close after Enter on final field")
+	}
+	if len(svc.Cfg.Jobs) != 1 {
+		t.Fatalf("expected 1 job saved in config, got %d", len(svc.Cfg.Jobs))
+	}
+	if svc.Cfg.Jobs[0].Name != "my-prod-db" {
+		t.Fatalf("expected job name 'my-prod-db', got %q", svc.Cfg.Jobs[0].Name)
+	}
+}
+

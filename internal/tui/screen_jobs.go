@@ -38,6 +38,12 @@ func (s JobsScreen) Update(msg tea.Msg) (JobsScreen, tea.Cmd) {
 	if s.isWizardOpen {
 		var cmd tea.Cmd
 		s.wizard, cmd = s.wizard.Update(msg)
+		if s.wizard.Done {
+			s.isWizardOpen = false
+			s.handleJobWizardFinish(s.wizard.Values)
+		} else if s.wizard.Canceled {
+			s.isWizardOpen = false
+		}
 		return s, cmd
 	}
 
@@ -156,55 +162,51 @@ func (s *JobsScreen) openAddJobWizard() {
 	s.wizard = NewWizard(
 		"Add New Backup Job",
 		steps,
-		func(vals map[string]string) tea.Cmd {
-			name := strings.TrimSpace(vals["name"])
-			if name == "" {
-				s.statusMsg = styleError.Render("Job name cannot be empty")
-				s.isWizardOpen = false
-				return nil
-			}
-
-			port, _ := strconv.Atoi(vals["port"])
-			keepLast, _ := strconv.Atoi(vals["keep_last"])
-			if keepLast <= 0 {
-				keepLast = 7
-			}
-
-			job := config.Job{
-				Name:   name,
-				Engine: vals["engine"],
-				Conn: config.Conn{
-					Host:     vals["host"],
-					Port:     port,
-					User:     vals["user"],
-					Database: vals["database"],
-					Path:     vals["path"],
-					TLS:      vals["tls"] == "true",
-				},
-				Storage:   vals["storage"],
-				Retention: config.Retention{KeepLast: keepLast},
-				Compress:  vals["compress"] == "true",
-				Encrypt:   vals["encrypt"] == "true",
-			}
-
-			// Store password in vault if provided
-			if pwd := vals["password"]; pwd != "" && s.svc.Vault != nil {
-				s.svc.Vault.Set("job/"+name+"/password", pwd)
-				_ = s.svc.Vault.Save()
-			}
-
-			s.svc.Cfg.Jobs = append(s.svc.Cfg.Jobs, job)
-			_ = s.svc.SaveConfig()
-			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added job %q", name))
-			s.isWizardOpen = false
-			return nil
-		},
-		func() tea.Cmd {
-			s.isWizardOpen = false
-			return nil
-		},
+		nil,
+		nil,
 	)
 	s.isWizardOpen = true
+}
+
+func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
+	name := strings.TrimSpace(vals["name"])
+	if name == "" {
+		s.statusMsg = styleError.Render("Job name cannot be empty")
+		return
+	}
+
+	port, _ := strconv.Atoi(vals["port"])
+	keepLast, _ := strconv.Atoi(vals["keep_last"])
+	if keepLast <= 0 {
+		keepLast = 7
+	}
+
+	job := config.Job{
+		Name:   name,
+		Engine: vals["engine"],
+		Conn: config.Conn{
+			Host:     vals["host"],
+			Port:     port,
+			User:     vals["user"],
+			Database: vals["database"],
+			Path:     vals["path"],
+			TLS:      vals["tls"] == "true",
+		},
+		Storage:   vals["storage"],
+		Retention: config.Retention{KeepLast: keepLast},
+		Compress:  vals["compress"] == "true",
+		Encrypt:   vals["encrypt"] == "true",
+	}
+
+	// Store password in vault if provided
+	if pwd := vals["password"]; pwd != "" && s.svc.Vault != nil {
+		s.svc.Vault.Set("job/"+name+"/password", pwd)
+		_ = s.svc.Vault.Save()
+	}
+
+	s.svc.Cfg.Jobs = append(s.svc.Cfg.Jobs, job)
+	_ = s.svc.SaveConfig()
+	s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added job %q", name))
 }
 
 func (s JobsScreen) View() string {

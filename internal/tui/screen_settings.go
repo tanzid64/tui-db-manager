@@ -22,6 +22,7 @@ type SettingsScreen struct {
 	selected     int
 	statusMsg    string
 	isWizardOpen bool
+	activeOpt    SettingsOption
 	wizard       WizardModel
 	onBack       func() tea.Cmd
 }
@@ -38,6 +39,12 @@ func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
 	if s.isWizardOpen {
 		var cmd tea.Cmd
 		s.wizard, cmd = s.wizard.Update(msg)
+		if s.wizard.Done {
+			s.isWizardOpen = false
+			s.handleSettingsWizardFinish(s.activeOpt, s.wizard.Values)
+		} else if s.wizard.Canceled {
+			s.isWizardOpen = false
+		}
 		return s, cmd
 	}
 
@@ -70,6 +77,7 @@ func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
 }
 
 func (s *SettingsScreen) triggerOption(opt SettingsOption) {
+	s.activeOpt = opt
 	switch opt {
 	case optChangePassphrase:
 		s.openChangePassphraseWizard()
@@ -95,35 +103,7 @@ func (s *SettingsScreen) openChangePassphraseWizard() {
 			},
 		},
 	}
-	s.wizard = NewWizard(
-		"Vault Security",
-		steps,
-		func(vals map[string]string) tea.Cmd {
-			p1 := vals["new_pass"]
-			p2 := vals["confirm_pass"]
-			if p1 == "" {
-				s.statusMsg = styleError.Render("Passphrase cannot be empty")
-				s.isWizardOpen = false
-				return nil
-			}
-			if p1 != p2 {
-				s.statusMsg = styleError.Render("Passphrases do not match")
-				s.isWizardOpen = false
-				return nil
-			}
-			if err := s.svc.ChangePassphrase(p1); err != nil {
-				s.statusMsg = styleError.Render("✖ Change passphrase failed: " + err.Error())
-			} else {
-				s.statusMsg = styleSuccess.Render("✔ Master passphrase changed successfully!")
-			}
-			s.isWizardOpen = false
-			return nil
-		},
-		func() tea.Cmd {
-			s.isWizardOpen = false
-			return nil
-		},
-	)
+	s.wizard = NewWizard("Vault Security", steps, nil, nil)
 	s.isWizardOpen = true
 }
 
@@ -147,25 +127,7 @@ func (s *SettingsScreen) openScheduleInstallWizard() {
 			},
 		},
 	}
-	s.wizard = NewWizard(
-		"Scheduling",
-		steps,
-		func(vals map[string]string) tea.Cmd {
-			job := vals["job"]
-			cron := vals["cron"]
-			if err := s.svc.InstallSchedule(job, cron); err != nil {
-				s.statusMsg = styleError.Render("✖ Schedule install failed: " + err.Error())
-			} else {
-				s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Automated schedule installed for job %q!", job))
-			}
-			s.isWizardOpen = false
-			return nil
-		},
-		func() tea.Cmd {
-			s.isWizardOpen = false
-			return nil
-		},
-	)
+	s.wizard = NewWizard("Scheduling", steps, nil, nil)
 	s.isWizardOpen = true
 }
 
@@ -188,24 +150,7 @@ func (s *SettingsScreen) openScheduleRemoveWizard() {
 			},
 		},
 	}
-	s.wizard = NewWizard(
-		"Scheduling",
-		steps,
-		func(vals map[string]string) tea.Cmd {
-			job := vals["job"]
-			if err := s.svc.RemoveSchedule(job); err != nil {
-				s.statusMsg = styleError.Render("✖ Schedule removal failed: " + err.Error())
-			} else {
-				s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Schedule removed for job %q!", job))
-			}
-			s.isWizardOpen = false
-			return nil
-		},
-		func() tea.Cmd {
-			s.isWizardOpen = false
-			return nil
-		},
-	)
+	s.wizard = NewWizard("Scheduling", steps, nil, nil)
 	s.isWizardOpen = true
 }
 
@@ -221,31 +166,7 @@ func (s *SettingsScreen) openExportWizard() {
 			},
 		},
 	}
-	s.wizard = NewWizard(
-		"Config Export",
-		steps,
-		func(vals map[string]string) tea.Cmd {
-			dest := strings.TrimSpace(vals["dest"])
-			if dest == "" {
-				s.statusMsg = styleError.Render("Destination path cannot be empty")
-				s.isWizardOpen = false
-				return nil
-			}
-			includeSec := vals["include_secrets"] == "true"
-			pass := vals["transfer_pass"]
-			if err := s.svc.ExportBundle(dest, pass, includeSec); err != nil {
-				s.statusMsg = styleError.Render("✖ Export failed: " + err.Error())
-			} else {
-				s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Export saved to %s!", dest))
-			}
-			s.isWizardOpen = false
-			return nil
-		},
-		func() tea.Cmd {
-			s.isWizardOpen = false
-			return nil
-		},
-	)
+	s.wizard = NewWizard("Config Export", steps, nil, nil)
 	s.isWizardOpen = true
 }
 
@@ -261,37 +182,82 @@ func (s *SettingsScreen) openImportWizard() {
 			},
 		},
 	}
-	s.wizard = NewWizard(
-		"Config Import",
-		steps,
-		func(vals map[string]string) tea.Cmd {
-			src := strings.TrimSpace(vals["src"])
-			if src == "" {
-				s.statusMsg = styleError.Render("Source path cannot be empty")
-				s.isWizardOpen = false
-				return nil
-			}
-			pass := vals["transfer_pass"]
-			ow := vals["overwrite"] == "true"
-			res, err := s.svc.ImportBundle(src, pass, ow)
-			if err != nil {
-				s.statusMsg = styleError.Render("✖ Import failed: " + err.Error())
-			} else {
-				_ = s.svc.SaveConfig()
-				if s.svc.Vault != nil {
-					_ = s.svc.Vault.Save()
-				}
-				s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Imported: %d jobs, %d storages, %d notifiers", res.ConfigResult.JobsAdded+res.ConfigResult.JobsUpdated, res.ConfigResult.StoragesAdded+res.ConfigResult.StoragesUpdated, res.ConfigResult.NotifiersAdded+res.ConfigResult.NotifiersUpdated))
-			}
-			s.isWizardOpen = false
-			return nil
-		},
-		func() tea.Cmd {
-			s.isWizardOpen = false
-			return nil
-		},
-	)
+	s.wizard = NewWizard("Config Import", steps, nil, nil)
 	s.isWizardOpen = true
+}
+
+func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map[string]string) {
+	switch opt {
+	case optChangePassphrase:
+		p1 := vals["new_pass"]
+		p2 := vals["confirm_pass"]
+		if p1 == "" {
+			s.statusMsg = styleError.Render("Passphrase cannot be empty")
+			return
+		}
+		if p1 != p2 {
+			s.statusMsg = styleError.Render("Passphrases do not match")
+			return
+		}
+		if err := s.svc.ChangePassphrase(p1); err != nil {
+			s.statusMsg = styleError.Render("✖ Change passphrase failed: " + err.Error())
+		} else {
+			s.statusMsg = styleSuccess.Render("✔ Master passphrase changed successfully!")
+		}
+
+	case optScheduleInstall:
+		job := vals["job"]
+		cron := vals["cron"]
+		if err := s.svc.InstallSchedule(job, cron); err != nil {
+			s.statusMsg = styleError.Render("✖ Schedule install failed: " + err.Error())
+		} else {
+			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Automated schedule installed for job %q!", job))
+		}
+
+	case optScheduleRemove:
+		job := vals["job"]
+		if err := s.svc.RemoveSchedule(job); err != nil {
+			s.statusMsg = styleError.Render("✖ Schedule removal failed: " + err.Error())
+		} else {
+			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Schedule removed for job %q!", job))
+		}
+
+	case optExportConfig:
+		dest := strings.TrimSpace(vals["dest"])
+		if dest == "" {
+			s.statusMsg = styleError.Render("Destination path cannot be empty")
+			return
+		}
+		includeSec := vals["include_secrets"] == "true"
+		pass := vals["transfer_pass"]
+		if err := s.svc.ExportBundle(dest, pass, includeSec); err != nil {
+			s.statusMsg = styleError.Render("✖ Export failed: " + err.Error())
+		} else {
+			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Export saved to %s!", dest))
+		}
+
+	case optImportConfig:
+		src := strings.TrimSpace(vals["src"])
+		if src == "" {
+			s.statusMsg = styleError.Render("Source path cannot be empty")
+			return
+		}
+		pass := vals["transfer_pass"]
+		ow := vals["overwrite"] == "true"
+		res, err := s.svc.ImportBundle(src, pass, ow)
+		if err != nil {
+			s.statusMsg = styleError.Render("✖ Import failed: " + err.Error())
+		} else {
+			_ = s.svc.SaveConfig()
+			if s.svc.Vault != nil {
+				_ = s.svc.Vault.Save()
+			}
+			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Imported: %d jobs, %d storages, %d notifiers",
+				res.ConfigResult.JobsAdded+res.ConfigResult.JobsUpdated,
+				res.ConfigResult.StoragesAdded+res.ConfigResult.StoragesUpdated,
+				res.ConfigResult.NotifiersAdded+res.ConfigResult.NotifiersUpdated))
+		}
+	}
 }
 
 func (s SettingsScreen) View() string {

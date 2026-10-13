@@ -36,6 +36,12 @@ func (s NotifyScreen) Update(msg tea.Msg) (NotifyScreen, tea.Cmd) {
 	if s.isWizardOpen {
 		var cmd tea.Cmd
 		s.wizard, cmd = s.wizard.Update(msg)
+		if s.wizard.Done {
+			s.isWizardOpen = false
+			s.handleNotifyWizardFinish(s.wizard.Values)
+		} else if s.wizard.Canceled {
+			s.isWizardOpen = false
+		}
 		return s, cmd
 	}
 
@@ -139,64 +145,60 @@ func (s *NotifyScreen) openAddNotifierWizard() {
 	s.wizard = NewWizard(
 		"Add Notification Channel",
 		steps,
-		func(vals map[string]string) tea.Cmd {
-			name := strings.TrimSpace(vals["name"])
-			if name == "" {
-				s.statusMsg = styleError.Render("Channel name cannot be empty")
-				s.isWizardOpen = false
-				return nil
-			}
-
-			nType := vals["type"]
-			nc := config.NotifierConfig{
-				Name: name,
-				Type: nType,
-			}
-
-			switch nType {
-			case "telegram":
-				nc.ChatID = vals["chat_id"]
-				if tok := vals["bot_token"]; tok != "" && s.svc.Vault != nil {
-					s.svc.Vault.Set("notifier/"+name+"/bot_token", tok)
-					_ = s.svc.Vault.Save()
-				}
-			case "email":
-				port, _ := strconv.Atoi(vals["port"])
-				if port <= 0 {
-					port = 587
-				}
-				nc.Host = vals["host"]
-				nc.Port = port
-				nc.From = vals["from"]
-				if to := vals["to"]; to != "" {
-					nc.To = []string{to}
-				}
-				nc.Username = vals["username"]
-				nc.TLS = vals["tls"] == "true"
-				if pwd := vals["password"]; pwd != "" && s.svc.Vault != nil {
-					s.svc.Vault.Set("notifier/"+name+"/password", pwd)
-					_ = s.svc.Vault.Save()
-				}
-			case "webhook":
-				nc.URL = vals["url"]
-				if tok := vals["token"]; tok != "" && s.svc.Vault != nil {
-					s.svc.Vault.Set("notifier/"+name+"/token", tok)
-					_ = s.svc.Vault.Save()
-				}
-			}
-
-			s.svc.Cfg.Notifiers = append(s.svc.Cfg.Notifiers, nc)
-			_ = s.svc.SaveConfig()
-			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added notifier %q", name))
-			s.isWizardOpen = false
-			return nil
-		},
-		func() tea.Cmd {
-			s.isWizardOpen = false
-			return nil
-		},
+		nil,
+		nil,
 	)
 	s.isWizardOpen = true
+}
+
+func (s *NotifyScreen) handleNotifyWizardFinish(vals map[string]string) {
+	name := strings.TrimSpace(vals["name"])
+	if name == "" {
+		s.statusMsg = styleError.Render("Channel name cannot be empty")
+		return
+	}
+
+	nType := vals["type"]
+	nc := config.NotifierConfig{
+		Name: name,
+		Type: nType,
+	}
+
+	switch nType {
+	case "telegram":
+		nc.ChatID = vals["chat_id"]
+		if tok := vals["bot_token"]; tok != "" && s.svc.Vault != nil {
+			s.svc.Vault.Set("notifier/"+name+"/bot_token", tok)
+			_ = s.svc.Vault.Save()
+		}
+	case "email":
+		port, _ := strconv.Atoi(vals["port"])
+		if port <= 0 {
+			port = 587
+		}
+		nc.Host = vals["host"]
+		nc.Port = port
+		nc.From = vals["from"]
+		if to := vals["to"]; to != "" {
+			nc.To = []string{to}
+		}
+		nc.Username = vals["username"]
+		nc.TLS = vals["tls"] == "true"
+		if pwd := vals["password"]; pwd != "" && s.svc.Vault != nil {
+			s.svc.Vault.Set("notifier/"+name+"/password", pwd)
+			_ = s.svc.Vault.Save()
+		}
+	case "webhook":
+		nc.URL = vals["url"]
+		if tok := vals["token"]; tok != "" && s.svc.Vault != nil {
+			s.svc.Vault.Set("notifier/"+name+"/token", tok)
+			_ = s.svc.Vault.Save()
+		}
+	}
+
+	s.svc.Cfg.Notifiers = append(s.svc.Cfg.Notifiers, nc)
+	_ = s.svc.SaveConfig()
+	s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added notifier %q", name))
 }
 
 func (s NotifyScreen) View() string {

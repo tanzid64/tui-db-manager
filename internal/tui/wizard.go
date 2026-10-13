@@ -40,6 +40,9 @@ type WizardModel struct {
 	ActiveStep   int
 	ActiveField  int
 	ErrMessage   string
+	Done         bool
+	Canceled     bool
+	Values       map[string]string
 	OnFinish     func(values map[string]string) tea.Cmd
 	OnCancel     func() tea.Cmd
 	ValidateStep func(stepIndex int, values map[string]string) error
@@ -127,6 +130,7 @@ func (w *WizardModel) Update(msg tea.Msg) (WizardModel, tea.Cmd) {
 				w.focusActiveField()
 				return *w, nil
 			}
+			w.Canceled = true
 			if w.OnCancel != nil {
 				return *w, w.OnCancel()
 			}
@@ -170,8 +174,10 @@ func (w *WizardModel) Update(msg tea.Msg) (WizardModel, tea.Cmd) {
 				return *w, nil
 			}
 			// Final step finished
+			w.Done = true
+			w.Values = w.CollectValues()
 			if w.OnFinish != nil {
-				return *w, w.OnFinish(w.CollectValues())
+				return *w, w.OnFinish(w.Values)
 			}
 			return *w, nil
 
@@ -276,6 +282,6 @@ func (w WizardModel) View() string {
 	}
 
 	// Navigation Help
-	b.WriteString(styleHelp.Render("Tab/Down: Next field • Shift+Tab/Up: Prev field • Enter: Continue/Submit • Esc: Back/Cancel"))
+	b.WriteString(styleHelp.Render("Space: Toggle • Tab/Down: Next • Shift+Tab/Up: Prev • Enter: Next/Submit • Esc: Back"))
 	return styleBox.Render(b.String())
 }
