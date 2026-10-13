@@ -1,6 +1,10 @@
 package db
 
-import "sort"
+import (
+	"context"
+	"fmt"
+	"sort"
+)
 
 var registry = map[string]Engine{}
 
@@ -16,3 +20,16 @@ func Names() []string {
 	sort.Strings(out)
 	return out
 }
+
+// ListDatabases queries the engine for available databases if supported.
+func ListDatabases(ctx context.Context, engineName string, c Conn) ([]string, error) {
+	eng, ok := Get(engineName)
+	if !ok {
+		return nil, fmt.Errorf("unknown database engine %q", engineName)
+	}
+	if lister, ok := eng.(DatabaseLister); ok {
+		return lister.ListDatabases(ctx, c)
+	}
+	return nil, nil
+}
+

@@ -2,9 +2,11 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/tanzid64/tui-db-manager/internal/config"
@@ -125,46 +127,179 @@ func (s *JobsScreen) openAddJobWizard() {
 		storageNames = append(storageNames, "default-local")
 	}
 
-	steps := []WizardStep{
-		{
-			Title:       "Job Identity",
-			Description: "Set the job name and target database engine",
-			Fields: []WizardField{
-				{Key: "name", Label: "Job Name", Placeholder: "production-mysql", Type: FieldText},
-				{Key: "engine", Label: "Database Engine", Type: FieldSelect, Options: []string{"mysql", "postgres", "mongodb", "sqlite"}},
-			},
-		},
-		{
-			Title:       "Database Connection",
-			Description: "Connection parameters (for sqlite, specify file path only)",
-			Fields: []WizardField{
-				{Key: "host", Label: "Host", Placeholder: "127.0.0.1", Type: FieldText},
-				{Key: "port", Label: "Port", Placeholder: "3306", Type: FieldText},
-				{Key: "user", Label: "Username", Placeholder: "root", Type: FieldText},
-				{Key: "password", Label: "Password (Vault)", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
-				{Key: "database", Label: "Database Name", Placeholder: "app_prod", Type: FieldText},
-				{Key: "path", Label: "SQLite Path", Placeholder: "/path/to/db.sqlite", Type: FieldText},
-				{Key: "tls", Label: "Use TLS", Type: FieldCheckbox, Checked: false},
-			},
-		},
-		{
-			Title:       "Storage & Retention",
-			Description: "Select target storage backend and backup retention count",
-			Fields: []WizardField{
-				{Key: "storage", Label: "Storage Destination", Type: FieldSelect, Options: storageNames},
-				{Key: "keep_last", Label: "Keep Last Backups", Placeholder: "7", Type: FieldText},
-				{Key: "compress", Label: "Gzip Compress", Type: FieldCheckbox, Checked: true},
-				{Key: "encrypt", Label: "Age Encrypt", Type: FieldCheckbox, Checked: false},
-			},
+	storageStep := WizardStep{
+		Title:       "Storage & Retention",
+		Description: "Select target storage backend and backup retention count",
+		Fields: []WizardField{
+			{Key: "storage", Label: "Storage Destination", Type: FieldSelect, Options: storageNames},
+			{Key: "keep_last", Label: "Keep Last Backups", Placeholder: "7", Type: FieldText},
+			{Key: "compress", Label: "Gzip Compress", Type: FieldCheckbox, Checked: true},
+			{Key: "encrypt", Label: "Age Encrypt", Type: FieldCheckbox, Checked: false},
 		},
 	}
 
-	s.wizard = NewWizard(
+	stepIdentity := WizardStep{
+		Title:       "Job Identity",
+		Description: "Set the job name and target database engine",
+		Fields: []WizardField{
+			{Key: "name", Label: "Job Name", Placeholder: "production-mysql", Type: FieldText},
+			{Key: "engine", Label: "Database Engine", Type: FieldSelect, Options: []string{"mysql", "postgres", "mongodb", "sqlite"}},
+		},
+	}
+
+	stepConn := WizardStep{
+		Title:       "Server Connection",
+		Description: "Connection parameters for the database server",
+		Fields: []WizardField{
+			{Key: "host", Label: "Host", Placeholder: "127.0.0.1", Type: FieldText},
+			{Key: "port", Label: "Port", Placeholder: "3306", Type: FieldText},
+			{Key: "user", Label: "Username", Placeholder: "root", Type: FieldText},
+			{Key: "password", Label: "Password (Vault)", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
+			{Key: "tls", Label: "Use TLS", Type: FieldCheckbox, Checked: false},
+		},
+	}
+
+	stepDb := WizardStep{
+		Title:       "Target Database",
+		Description: "Select target database from server",
+		Fields: []WizardField{
+			{Key: "database", Label: "Database Name", Placeholder: "app_prod", Type: FieldText},
+		},
+	}
+
+	steps := []WizardStep{stepIdentity, stepConn, stepDb, storageStep}
+
+	w := NewWizard(
 		"Add New Backup Job",
 		steps,
 		nil,
 		nil,
 	)
+
+	w.OnStepAdvance = func(wiz *WizardModel, currentStep int) {
+		vals := wiz.CollectValues()
+		engine := strings.ToLower(strings.TrimSpace(vals["engine"]))
+		if engine == "" {
+			engine = "mysql"
+		}
+
+		if currentStep == 0 {
+			if engine == "sqlite" {
+				sqliteStep := WizardStep{
+					Title:       "SQLite Connection",
+					Description: "Specify path to SQLite database file",
+					Fields: []WizardField{
+						{Key: "path", Label: "SQLite Path", Placeholder: "/path/to/db.sqlite", Type: FieldText},
+					},
+				}
+				wiz.SetSteps([]WizardStep{wiz.Steps[0], sqliteStep, storageStep})
+			} else {
+				portPlaceholder := "3306"
+				userPlaceholder := "root"
+				switch engine {
+				case "postgres":
+					portPlaceholder = "5432"
+					userPlaceholder = "postgres"
+				case "mongodb":
+					portPlaceholder = "27017"
+					userPlaceholder = "admin"
+				}
+				connFields := []WizardField{
+					{Key: "host", Label: "Host", Placeholder: "127.0.0.1", Type: FieldText},
+					{Key: "port", Label: "Port", Placeholder: portPlaceholder, Type: FieldText},
+					{Key: "user", Label: "Username", Placeholder: userPlaceholder, Type: FieldText},
+					{Key: "password", Label: "Password (Vault)", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
+					{Key: "tls", Label: "Use TLS", Type: FieldCheckbox, Checked: false},
+				}
+				connStep := WizardStep{
+					Title:       "Server Connection",
+					Description: "Connection parameters for the database server",
+					Fields:      connFields,
+				}
+				wiz.SetSteps([]WizardStep{wiz.Steps[0], connStep, stepDb, storageStep})
+			}
+		} else if currentStep == 1 && engine != "sqlite" {
+			host := strings.TrimSpace(vals["host"])
+			if host == "" {
+				host = "127.0.0.1"
+			}
+			port, _ := strconv.Atoi(vals["port"])
+			if port <= 0 {
+				switch engine {
+				case "postgres":
+					port = 5432
+				case "mongodb":
+					port = 27017
+				default:
+					port = 3306
+				}
+			}
+			user := strings.TrimSpace(vals["user"])
+			pwd := vals["password"]
+			useTLS := vals["tls"] == "true"
+
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			dbs, err := s.svc.ListDatabases(ctx, engine, config.Conn{
+				Host: host,
+				Port: port,
+				User: user,
+				TLS:  useTLS,
+			}, pwd)
+			cancel()
+
+			if err == nil && len(dbs) > 0 {
+				wiz.Steps[2] = WizardStep{
+					Title:       "Target Database",
+					Description: fmt.Sprintf("Discovered %d databases on %s:%d — choose target database", len(dbs), host, port),
+					Fields: []WizardField{
+						{Key: "database", Label: "Database Name", Type: FieldSelect, Options: dbs},
+					},
+				}
+				InitFields(wiz.Steps[2].Fields)
+			} else {
+				desc := "Enter target database name manually"
+				if err != nil {
+					desc = fmt.Sprintf("Could not list databases (%s) — enter manually", err.Error())
+				}
+				wiz.Steps[2] = WizardStep{
+					Title:       "Target Database",
+					Description: desc,
+					Fields: []WizardField{
+						{Key: "database", Label: "Database Name", Placeholder: "app_prod", Type: FieldText},
+					},
+				}
+				InitFields(wiz.Steps[2].Fields)
+			}
+		}
+	}
+
+	w.ValidateStep = func(stepIndex int, vals map[string]string) error {
+		engine := strings.ToLower(strings.TrimSpace(vals["engine"]))
+		if stepIndex == 0 {
+			name := strings.TrimSpace(vals["name"])
+			if name == "" {
+				return errors.New("job name cannot be empty")
+			}
+			for _, existing := range s.svc.Cfg.Jobs {
+				if existing.Name == name {
+					return fmt.Errorf("job %q already exists", name)
+				}
+			}
+		} else if stepIndex == 1 {
+			if engine == "sqlite" {
+				if strings.TrimSpace(vals["path"]) == "" {
+					return errors.New("SQLite path cannot be empty")
+				}
+			}
+		} else if stepIndex == 2 && engine != "sqlite" {
+			if strings.TrimSpace(vals["database"]) == "" {
+				return errors.New("database name cannot be empty")
+			}
+		}
+		return nil
+	}
+
+	s.wizard = w
 	s.isWizardOpen = true
 }
 
@@ -175,21 +310,37 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 		return
 	}
 
+	engine := strings.ToLower(strings.TrimSpace(vals["engine"]))
 	port, _ := strconv.Atoi(vals["port"])
+	if port <= 0 && engine != "sqlite" {
+		switch engine {
+		case "postgres":
+			port = 5432
+		case "mongodb":
+			port = 27017
+		default:
+			port = 3306
+		}
+	}
 	keepLast, _ := strconv.Atoi(vals["keep_last"])
 	if keepLast <= 0 {
 		keepLast = 7
 	}
 
+	host := strings.TrimSpace(vals["host"])
+	if host == "" && engine != "sqlite" {
+		host = "127.0.0.1"
+	}
+
 	job := config.Job{
 		Name:   name,
-		Engine: vals["engine"],
+		Engine: engine,
 		Conn: config.Conn{
-			Host:     vals["host"],
+			Host:     host,
 			Port:     port,
-			User:     vals["user"],
-			Database: vals["database"],
-			Path:     vals["path"],
+			User:     strings.TrimSpace(vals["user"]),
+			Database: strings.TrimSpace(vals["database"]),
+			Path:     strings.TrimSpace(vals["path"]),
 			TLS:      vals["tls"] == "true",
 		},
 		Storage:   vals["storage"],

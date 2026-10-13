@@ -30,3 +30,9 @@ type Engine interface {
 	Dump(ctx context.Context, c Conn, w io.Writer) error
 	Restore(ctx context.Context, c Conn, r io.Reader) error
 }
+
+// DatabaseLister is an optional interface implemented by engines that can list available databases on a server.
+type DatabaseLister interface {
+	ListDatabases(ctx context.Context, c Conn) ([]string, error)
+}
+

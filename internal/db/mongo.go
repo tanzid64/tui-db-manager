@@ -1,10 +1,12 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 type mongoEngine struct{}
@@ -103,3 +105,55 @@ func (e mongoEngine) Restore(ctx context.Context, c Conn, r io.Reader) error {
 	defer cleanup()
 	return runCmd(ctx, cmdSpec{Path: tool, Args: args, Stdin: r})
 }
+
+func (e mongoEngine) ListDatabases(ctx context.Context, c Conn) ([]string, error) {
+	tool, err := lookTool("mongosh", "mongo")
+	if err != nil {
+		return nil, err
+	}
+	host := c.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := c.Port
+	if port <= 0 {
+		port = 27017
+	}
+	baseArgs := []string{
+		fmt.Sprintf("--host=%s", host),
+		fmt.Sprintf("--port=%d", port),
+	}
+	if c.User != "" {
+		baseArgs = append(baseArgs, fmt.Sprintf("--username=%s", c.User))
+	}
+	if c.TLS {
+		baseArgs = append(baseArgs, "--tls")
+	}
+	args, cleanup, err := e.withConfig(c, baseArgs)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	var out bytes.Buffer
+	evalScript := "db.adminCommand({listDatabases:1}).databases.forEach(function(d){print(d.name)})"
+	args = append(args, "--quiet", "--eval", evalScript)
+	err = runCmd(ctx, cmdSpec{
+		Path:   tool,
+		Args:   args,
+		Stdout: &out,
+	})
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	var dbs []string
+	for _, l := range lines {
+		name := strings.TrimSpace(l)
+		if name != "" && name != "admin" && name != "config" && name != "local" {
+			dbs = append(dbs, name)
+		}
+	}
+	return dbs, nil
+}
+

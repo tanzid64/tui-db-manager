@@ -54,6 +54,9 @@ func InitFields(fields []WizardField) []WizardField {
 	for fIdx := range fields {
 		f := &fields[fIdx]
 		if f.Type == FieldText {
+			if f.Input.Prompt != "" || f.Input.Value() != "" {
+				continue
+			}
 			ti := textinput.New()
 			ti.Placeholder = f.Placeholder
 			if f.IsSecret {
@@ -73,6 +76,14 @@ func (w *WizardModel) SetStepFields(stepIndex int, fields []WizardField) {
 	}
 	InitFields(fields)
 	w.Steps[stepIndex].Fields = fields
+}
+
+// SetSteps updates the full step list and initializes any uninitialized text inputs.
+func (w *WizardModel) SetSteps(steps []WizardStep) {
+	for sIdx := range steps {
+		InitFields(steps[sIdx].Fields)
+	}
+	w.Steps = steps
 }
 
 func NewWizard(title string, steps []WizardStep, onFinish func(map[string]string) tea.Cmd, onCancel func() tea.Cmd) WizardModel {

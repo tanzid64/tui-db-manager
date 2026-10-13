@@ -274,6 +274,20 @@ func (s *Service) ResolveJobIdentity(j config.Job) (string, error) {
 	return "", fmt.Errorf("age identity for job %q not found in vault", j.Name)
 }
 
+func (s *Service) ListDatabases(ctx context.Context, engine string, conn config.Conn, password string) ([]string, error) {
+	c := db.Conn{
+		Host:     conn.Host,
+		Port:     conn.Port,
+		User:     conn.User,
+		Password: password,
+		Database: conn.Database,
+		Path:     conn.Path,
+		TLS:      conn.TLS,
+	}
+	return db.ListDatabases(ctx, engine, c)
+}
+
+
 func (s *Service) RunBackup(ctx context.Context, jobName string) (RunRecord, error) {
 	start := time.Now()
 	rec := RunRecord{

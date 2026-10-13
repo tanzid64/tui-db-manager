@@ -1,9 +1,11 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"strings"
 )
 
 type mysqlEngine struct{}
@@ -68,3 +70,53 @@ func (e mysqlEngine) Restore(ctx context.Context, c Conn, r io.Reader) error {
 		fmt.Sprintf("--user=%s", c.User), c.Database}
 	return runCmd(ctx, cmdSpec{Path: tool, Args: args, Env: MySQLEnv(c), Stdin: r})
 }
+
+func (e mysqlEngine) ListDatabases(ctx context.Context, c Conn) ([]string, error) {
+	tool, err := lookTool("mysql", "mariadb")
+	if err != nil {
+		return nil, err
+	}
+	host := c.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := c.Port
+	if port <= 0 {
+		port = 3306
+	}
+	user := c.User
+	if user == "" {
+		user = "root"
+	}
+	args := []string{
+		fmt.Sprintf("--host=%s", host),
+		fmt.Sprintf("--port=%d", port),
+		fmt.Sprintf("--user=%s", user),
+		"--batch", "--skip-column-names",
+		"-e", "SHOW DATABASES;",
+	}
+	if c.TLS {
+		args = append(args, "--ssl-mode=REQUIRED")
+	}
+	var out bytes.Buffer
+	err = runCmd(ctx, cmdSpec{
+		Path:   tool,
+		Args:   args,
+		Env:    MySQLEnv(c),
+		Stdout: &out,
+	})
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	var dbs []string
+	for _, l := range lines {
+		dbName := strings.TrimSpace(l)
+		if dbName == "" || dbName == "information_schema" || dbName == "performance_schema" || dbName == "sys" {
+			continue
+		}
+		dbs = append(dbs, dbName)
+	}
+	return dbs, nil
+}
+

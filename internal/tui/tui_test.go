@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/tanzid64/tui-db-manager/internal/config"
+	"github.com/tanzid64/tui-db-manager/internal/db"
 )
 
 func TestWizardNavigationAndCollection(t *testing.T) {
@@ -321,25 +324,33 @@ func TestJobsScreenWizardEnterCompletion(t *testing.T) {
 	if screen.wizard.ActiveField != 1 {
 		t.Fatalf("expected active field 1, got %d", screen.wizard.ActiveField)
 	}
-	// Press Enter on Field 1 (last field of Step 1) -> advances to Step 2
+	// Press Enter on Field 1 (last field of Step 0) -> advances to Step 1 (Server Connection)
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if screen.wizard.ActiveStep != 1 {
-		t.Fatalf("expected step 1 (Database Connection), got %d", screen.wizard.ActiveStep)
+		t.Fatalf("expected step 1 (Server Connection), got %d", screen.wizard.ActiveStep)
 	}
 
-	// Step 2: Database Connection
-	// Fields: 0: host, 1: port, 2: user, 3: password, 4: database, 5: path, 6: tls
-	// Press Enter 6 times to move across fields to field 6 (tls checkbox)
-	for f := 0; f < 6; f++ {
+	// Step 1: Server Connection
+	// Fields: 0: host, 1: port, 2: user, 3: password, 4: tls
+	// Press Enter 4 times to move across fields to field 4 (tls checkbox)
+	for f := 0; f < 4; f++ {
 		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	}
-	if screen.wizard.ActiveField != 6 {
-		t.Fatalf("expected active field 6 (tls), got %d", screen.wizard.ActiveField)
+	if screen.wizard.ActiveField != 4 {
+		t.Fatalf("expected active field 4 (tls), got %d", screen.wizard.ActiveField)
 	}
-	// Press Enter on Field 6 (last field of Step 2) -> advances to Step 3
+	// Press Enter on Field 4 (last field of Step 1) -> advances to Step 2 (Target Database)
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if screen.wizard.ActiveStep != 2 {
-		t.Fatalf("expected step 2 (Storage & Retention), got %d", screen.wizard.ActiveStep)
+		t.Fatalf("expected step 2 (Target Database), got %d", screen.wizard.ActiveStep)
+	}
+
+	// Step 2: Target Database (manual entry fallback in test environment)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("mydb")})
+	// Press Enter on database field (last field of Step 2) -> advances to Step 3 (Storage & Retention)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveStep != 3 {
+		t.Fatalf("expected step 3 (Storage & Retention), got %d", screen.wizard.ActiveStep)
 	}
 
 	// Step 3: Storage & Retention
@@ -361,7 +372,6 @@ func TestJobsScreenWizardEnterCompletion(t *testing.T) {
 	}
 
 	// Now press Enter on field 3 (final field of final step)
-	// This was where the user was stuck!
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Verify wizard is now closed and Done
@@ -374,7 +384,115 @@ func TestJobsScreenWizardEnterCompletion(t *testing.T) {
 	if svc.Cfg.Jobs[0].Name != "my-prod-db" {
 		t.Fatalf("expected job name 'my-prod-db', got %q", svc.Cfg.Jobs[0].Name)
 	}
+	if svc.Cfg.Jobs[0].Conn.Database != "mydb" {
+		t.Fatalf("expected job database 'mydb', got %q", svc.Cfg.Jobs[0].Conn.Database)
+	}
 }
+
+type testLiveListerEngine struct {
+	dbs []string
+}
+
+func (m testLiveListerEngine) Name() string                        { return "mysql" }
+func (m testLiveListerEngine) DefaultPort() int                    { return 3306 }
+func (m testLiveListerEngine) Detect() (string, error)             { return "true", nil }
+func (m testLiveListerEngine) Test(context.Context, db.Conn) error { return nil }
+func (m testLiveListerEngine) Dump(context.Context, db.Conn, io.Writer) error {
+	return nil
+}
+func (m testLiveListerEngine) Restore(context.Context, db.Conn, io.Reader) error {
+	return nil
+}
+func (m testLiveListerEngine) ListDatabases(context.Context, db.Conn) ([]string, error) {
+	return m.dbs, nil
+}
+
+func TestJobsScreenWizardLiveDatabaseSelection(t *testing.T) {
+	// Temporarily register a mock engine that lists databases
+	origEngine, _ := db.Get("mysql")
+	db.Register(testLiveListerEngine{dbs: []string{"analytics_prod", "users_prod", "billing_prod"}})
+	defer db.Register(origEngine)
+
+	dir := t.TempDir()
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	if err := svc.CreateVault("vault-pass"); err != nil {
+		t.Fatalf("CreateVault: %v", err)
+	}
+
+	screen := NewJobsScreen(svc, nil, nil)
+
+	// Open wizard
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+
+	// Step 0: Job Name
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("backup-live")})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter}) // to engine
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter}) // advances to Step 1 (Server Connection)
+
+	if screen.wizard.ActiveStep != 1 {
+		t.Fatalf("expected step 1, got %d", screen.wizard.ActiveStep)
+	}
+
+	// Step 1: Server Connection
+	// Move through host, port, user, password, tls
+	for i := 0; i < 4; i++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+	// Press Enter on tls (last field of Step 1) -> triggers OnStepAdvance with live ListDatabases!
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if screen.wizard.ActiveStep != 2 {
+		t.Fatalf("expected step 2 (Target Database), got %d", screen.wizard.ActiveStep)
+	}
+
+	// Verify Step 2 has FieldSelect with the discovered databases!
+	dbField := screen.wizard.Steps[2].Fields[0]
+	if dbField.Type != FieldSelect {
+		t.Fatalf("expected FieldSelect for database selection, got %v", dbField.Type)
+	}
+	if len(dbField.Options) != 3 {
+		t.Fatalf("expected 3 discovered databases, got %d", len(dbField.Options))
+	}
+	if dbField.Options[0] != "analytics_prod" || dbField.Options[1] != "users_prod" || dbField.Options[2] != "billing_prod" {
+		t.Fatalf("unexpected database options: %+v", dbField.Options)
+	}
+
+	// Select the second database: "users_prod" (Right arrow)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if screen.wizard.Steps[2].Fields[0].SelectedOpt != 1 {
+		t.Fatalf("expected selected opt 1 (users_prod)")
+	}
+
+	// Press Enter on database selection -> advances to Step 3 (Storage & Retention)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveStep != 3 {
+		t.Fatalf("expected step 3, got %d", screen.wizard.ActiveStep)
+	}
+
+	// Press Enter across storage fields to complete
+	for i := 0; i < 4; i++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+
+	// Verify wizard is finished and job has selected database "users_prod"
+	if screen.isWizardOpen {
+		t.Fatalf("expected wizard to be closed")
+	}
+	if len(svc.Cfg.Jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(svc.Cfg.Jobs))
+	}
+	job := svc.Cfg.Jobs[0]
+	if job.Name != "backup-live" {
+		t.Fatalf("expected job name 'backup-live', got %s", job.Name)
+	}
+	if job.Conn.Database != "users_prod" {
+		t.Fatalf("expected database 'users_prod', got %s", job.Conn.Database)
+	}
+}
+
 
 func TestStorageScreenDynamicWizard(t *testing.T) {
 	dir := t.TempDir()

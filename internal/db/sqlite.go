@@ -47,3 +47,8 @@ func (e sqliteEngine) Restore(ctx context.Context, c Conn, r io.Reader) error {
 	}
 	return runCmd(ctx, cmdSpec{Path: tool, Args: []string{c.Path}, Stdin: r})
 }
+
+func (e sqliteEngine) ListDatabases(ctx context.Context, c Conn) ([]string, error) {
+	return nil, nil
+}
+
