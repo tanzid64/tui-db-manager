@@ -60,7 +60,10 @@ if [ -z "${VERSION:-}" ] || [ "$VERSION" = "latest" ]; then
   log_info "Detecting latest release of $REPO..."
   VERSION="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || true)"
   if [ -z "$VERSION" ]; then
-    VERSION="v1.0.0"
+    log_error "No published release found on GitHub for $REPO."
+    log_error "Please ensure a release tag (e.g. v1.0.0) has been pushed to GitHub."
+    log_error "To install directly from source, run: go install github.com/$REPO/cmd/dbk@latest"
+    exit 1
   fi
 fi
 
@@ -80,6 +83,8 @@ trap cleanup EXIT INT TERM
 log_info "Downloading dbk $VERSION for $OS/$ARCH..."
 if ! curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/$ASSET_NAME"; then
   log_error "Failed to download $DOWNLOAD_URL"
+  log_error "Ensure a GitHub Release with assets exists for version $VERSION."
+  log_error "To install directly from source, run: go install github.com/$REPO/cmd/dbk@latest"
   exit 1
 fi
 

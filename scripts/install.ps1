@@ -28,7 +28,8 @@ if ([string]::IsNullOrEmpty($Version) -or $Version -eq "latest") {
         $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
         $Version = $release.tag_name
     } catch {
-        $Version = "v1.0.0"
+        Write-Error "No published release found on GitHub for $Repo. Please push a release tag or install using 'go install github.com/$Repo/cmd/dbk@latest'."
+        exit 1
     }
 }
 
