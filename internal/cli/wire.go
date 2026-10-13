@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
+	"github.com/tanzid64/tui-db-manager/internal/notify"
 	"github.com/tanzid64/tui-db-manager/internal/secretref"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
 	"github.com/tanzid64/tui-db-manager/internal/vault"
@@ -145,5 +146,73 @@ func maybeOpenVault(dir, passFile string, interactive bool) (*vault.Store, error
 	return vault.Open(dir, pass)
 }
 
-func errUnknownJob(name string) error     { return fmt.Errorf("job %q not found", name) }
-func errUnknownStorage(name string) error { return fmt.Errorf("storage %q not found", name) }
+func errUnknownJob(name string) error      { return fmt.Errorf("job %q not found", name) }
+func errUnknownStorage(name string) error  { return fmt.Errorf("storage %q not found", name) }
+func errUnknownNotifier(name string) error { return fmt.Errorf("notifier %q not found", name) }
+
+func buildNotifier(ctx context.Context, nc config.NotifierConfig, v *vault.Store) (notify.Notifier, error) {
+	switch nc.Type {
+	case "telegram":
+		token, err := resolveNotifierSecret(nc.Name, nc.BotTokenRef, "bot_token", v)
+		if err != nil {
+			return nil, err
+		}
+		return notify.NewTelegram(notify.TelegramOptions{
+			BotToken: token,
+			ChatID:   nc.ChatID,
+		})
+	case "webhook":
+		var secret string
+		if nc.TokenRef != "" {
+			s, err := resolveNotifierSecret(nc.Name, nc.TokenRef, "token", v)
+			if err != nil {
+				return nil, err
+			}
+			secret = s
+		} else if v != nil {
+			if s, ok := v.Get("notifier/" + nc.Name + "/token"); ok {
+				secret = s
+			}
+		}
+		return notify.NewWebhook(notify.WebhookOptions{
+			URL:     nc.URL,
+			Headers: nc.Headers,
+			Secret:  secret,
+		})
+	case "email":
+		var password string
+		if nc.PasswordRef != "" {
+			p, err := resolveNotifierSecret(nc.Name, nc.PasswordRef, "password", v)
+			if err != nil {
+				return nil, err
+			}
+			password = p
+		} else if v != nil {
+			if p, ok := v.Get("notifier/" + nc.Name + "/password"); ok {
+				password = p
+			}
+		}
+		return notify.NewEmail(notify.EmailOptions{
+			Host:     nc.Host,
+			Port:     nc.Port,
+			From:     nc.From,
+			To:       nc.To,
+			Username: nc.Username,
+			Password: password,
+			TLS:      nc.TLS,
+		})
+	default:
+		return nil, fmt.Errorf("notifier type %q not supported", nc.Type)
+	}
+}
+
+func resolveNotifierSecret(notifierName, ref, keyName string, v *vault.Store) (string, error) {
+	var lookup func(string) (string, bool)
+	if v != nil {
+		lookup = v.Get
+	}
+	if ref == "" {
+		ref = "notifier/" + notifierName + "/" + keyName
+	}
+	return secretref.Resolve(ref, lookup)
+}

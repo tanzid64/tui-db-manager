@@ -14,6 +14,7 @@ import (
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
 	"github.com/tanzid64/tui-db-manager/internal/logutil"
+	"github.com/tanzid64/tui-db-manager/internal/notify"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
 )
 
@@ -354,5 +355,115 @@ func TestRunBackupEncryptWithoutRecipientFails(t *testing.T) {
 	_, err := Run(context.Background(), deps, "main")
 	if err == nil {
 		t.Fatal("expected error when encrypt is true but encrypt_recipient is empty")
+	}
+}
+
+type recordNotifier struct {
+	events  []notify.Event
+	sendErr error
+}
+
+func (r *recordNotifier) Name() string               { return "record" }
+func (r *recordNotifier) Test(context.Context) error { return nil }
+func (r *recordNotifier) Send(_ context.Context, ev notify.Event) error {
+	r.events = append(r.events, ev)
+	return r.sendErr
+}
+
+func TestRunBackupEmitsSuccessNotification(t *testing.T) {
+	rec := &recordNotifier{}
+	cfg := &config.Config{
+		Version: 1,
+		Jobs: []config.Job{{
+			Name: "main", Engine: "fake", Storage: "local",
+			Conn: config.Conn{Database: "app"}, Notifiers: []string{"rec"},
+		}},
+		Storages:  []config.StorageConfig{{Name: "local", Type: "local"}},
+		Notifiers: []config.NotifierConfig{{Name: "rec", Type: "webhook"}},
+	}
+	be := storage.NewLocal(t.TempDir())
+	deps := Deps{
+		Cfg:             cfg,
+		Engine:          func(string) (db.Engine, bool) { return &fakeEngine{}, true },
+		Backend:         func(config.StorageConfig) (storage.Backend, error) { return be, nil },
+		ResolvePassword: func(config.Job) (string, error) { return "", nil },
+		Notifier:        func(nc config.NotifierConfig) (notify.Notifier, error) { return rec, nil },
+		Now:             func() time.Time { return time.Date(2026, 10, 12, 3, 4, 5, 0, time.UTC) },
+		Log:             logutil.New(io.Discard, logutil.LevelInfo),
+	}
+	obj, err := Run(context.Background(), deps, "main")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(rec.events) != 1 {
+		t.Fatalf("expected 1 notification event, got %d", len(rec.events))
+	}
+	ev := rec.events[0]
+	if ev.Type != notify.EventBackupSucceeded || ev.Job != "main" || ev.Size != obj.Size {
+		t.Fatalf("unexpected success event: %+v", ev)
+	}
+}
+
+func TestRunBackupEmitsFailureNotification(t *testing.T) {
+	rec := &recordNotifier{}
+	cfg := &config.Config{
+		Version: 1,
+		Jobs: []config.Job{{
+			Name: "main", Engine: "err", Storage: "local",
+			Conn: config.Conn{Database: "app"}, Notifiers: []string{"rec"},
+		}},
+		Storages:  []config.StorageConfig{{Name: "local", Type: "local"}},
+		Notifiers: []config.NotifierConfig{{Name: "rec", Type: "webhook"}},
+	}
+	be := storage.NewLocal(t.TempDir())
+	deps := Deps{
+		Cfg:             cfg,
+		Engine:          func(string) (db.Engine, bool) { return &errEngine{dumpErr: errors.New("dump failure")}, true },
+		Backend:         func(config.StorageConfig) (storage.Backend, error) { return be, nil },
+		ResolvePassword: func(config.Job) (string, error) { return "", nil },
+		Notifier:        func(nc config.NotifierConfig) (notify.Notifier, error) { return rec, nil },
+		Now:             func() time.Time { return time.Date(2026, 10, 12, 3, 4, 5, 0, time.UTC) },
+		Log:             logutil.New(io.Discard, logutil.LevelInfo),
+	}
+	_, err := Run(context.Background(), deps, "main")
+	if err == nil {
+		t.Fatal("expected run error")
+	}
+	if len(rec.events) != 1 {
+		t.Fatalf("expected 1 failure notification, got %d", len(rec.events))
+	}
+	ev := rec.events[0]
+	if ev.Type != notify.EventBackupFailed || ev.Job != "main" || !strings.Contains(ev.Err, "dump failure") {
+		t.Fatalf("unexpected failure event: %+v", ev)
+	}
+}
+
+func TestRunBackupNotificationFailureDoesNotMaskBackupSuccess(t *testing.T) {
+	rec := &recordNotifier{sendErr: errors.New("webhook 500 error")}
+	cfg := &config.Config{
+		Version: 1,
+		Jobs: []config.Job{{
+			Name: "main", Engine: "fake", Storage: "local",
+			Conn: config.Conn{Database: "app"}, Notifiers: []string{"rec"},
+		}},
+		Storages:  []config.StorageConfig{{Name: "local", Type: "local"}},
+		Notifiers: []config.NotifierConfig{{Name: "rec", Type: "webhook"}},
+	}
+	be := storage.NewLocal(t.TempDir())
+	deps := Deps{
+		Cfg:             cfg,
+		Engine:          func(string) (db.Engine, bool) { return &fakeEngine{}, true },
+		Backend:         func(config.StorageConfig) (storage.Backend, error) { return be, nil },
+		ResolvePassword: func(config.Job) (string, error) { return "", nil },
+		Notifier:        func(nc config.NotifierConfig) (notify.Notifier, error) { return rec, nil },
+		Now:             func() time.Time { return time.Date(2026, 10, 12, 3, 4, 5, 0, time.UTC) },
+		Log:             logutil.New(io.Discard, logutil.LevelInfo),
+	}
+	obj, err := Run(context.Background(), deps, "main")
+	if err != nil {
+		t.Fatalf("run failed even though backup itself succeeded: %v", err)
+	}
+	if obj.Size == 0 {
+		t.Fatal("expected non-zero size")
 	}
 }

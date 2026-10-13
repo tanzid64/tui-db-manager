@@ -13,9 +13,10 @@ import (
 const CurrentVersion = 1
 
 type Config struct {
-	Version  int             `yaml:"version"`
-	Jobs     []Job           `yaml:"jobs"`
-	Storages []StorageConfig `yaml:"storages"`
+	Version   int              `yaml:"version"`
+	Jobs      []Job            `yaml:"jobs"`
+	Storages  []StorageConfig  `yaml:"storages"`
+	Notifiers []NotifierConfig `yaml:"notifiers,omitempty"`
 }
 
 type Job struct {
@@ -28,7 +29,8 @@ type Job struct {
 	Encrypt   bool      `yaml:"encrypt,omitempty"`  // age-encrypt before upload
 	// EncryptRecipient is the age X25519 public key ("age1..."). Required when Encrypt is true.
 	// The corresponding identity (private key) lives in the vault under "job/<name>/age_identity".
-	EncryptRecipient string `yaml:"encrypt_recipient,omitempty"`
+	EncryptRecipient string   `yaml:"encrypt_recipient,omitempty"`
+	Notifiers        []string `yaml:"notifiers,omitempty"`
 }
 
 type Conn struct {
@@ -70,6 +72,29 @@ type StorageConfig struct {
 	// CredentialsRef is "env:NAME", "file:/path", or empty (meaning the vault key
 	// "storage/<name>/credentials"). The raw service-account JSON is never stored here.
 	CredentialsRef string `yaml:"credentials_ref,omitempty"`
+}
+
+type NotifierConfig struct {
+	Name string `yaml:"name"`
+	Type string `yaml:"type"` // telegram | email | webhook
+
+	// Telegram
+	BotTokenRef string `yaml:"bot_token_ref,omitempty"` // env:/file: or vault key "notifier/<name>/bot_token"
+	ChatID      string `yaml:"chat_id,omitempty"`
+
+	// Email
+	Host        string   `yaml:"host,omitempty"`
+	Port        int      `yaml:"port,omitempty"`
+	From        string   `yaml:"from,omitempty"`
+	To          []string `yaml:"to,omitempty"`
+	Username    string   `yaml:"username,omitempty"`
+	PasswordRef string   `yaml:"password_ref,omitempty"` // env:/file: or vault key "notifier/<name>/password"
+	TLS         bool     `yaml:"tls,omitempty"`          // implicit TLS (port 465)
+
+	// Webhook
+	URL      string            `yaml:"url,omitempty"`
+	Headers  map[string]string `yaml:"headers,omitempty"`
+	TokenRef string            `yaml:"token_ref,omitempty"` // env:/file: or vault key "notifier/<name>/token"
 }
 
 func fileName(dir string) string { return filepath.Join(dir, "config.yaml") }
@@ -123,4 +148,13 @@ func (c *Config) Storage(name string) (StorageConfig, bool) {
 		}
 	}
 	return StorageConfig{}, false
+}
+
+func (c *Config) Notifier(name string) (NotifierConfig, bool) {
+	for _, n := range c.Notifiers {
+		if n.Name == name {
+			return n, true
+		}
+	}
+	return NotifierConfig{}, false
 }

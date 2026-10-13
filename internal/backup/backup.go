@@ -10,6 +10,7 @@ import (
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
 	"github.com/tanzid64/tui-db-manager/internal/logutil"
+	"github.com/tanzid64/tui-db-manager/internal/notify"
 	"github.com/tanzid64/tui-db-manager/internal/pipeline"
 	"github.com/tanzid64/tui-db-manager/internal/retention"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
@@ -31,6 +32,7 @@ type Deps struct {
 	// "job/<name>/age_identity". Backup itself only needs the recipient, but
 	// ResolveIdentity is part of Deps so restore can share the same wiring.
 	ResolveIdentity func(config.Job) (string, error)
+	Notifier        func(config.NotifierConfig) (notify.Notifier, error)
 	Now             func() time.Time
 	Log             *logutil.Logger
 }
@@ -51,10 +53,56 @@ func BuildKey(job string, t time.Time, ext string) string {
 }
 
 func Run(ctx context.Context, d Deps, jobName string) (storage.Object, error) {
+	start := d.Now()
 	job, ok := d.Cfg.Job(jobName)
 	if !ok {
 		return storage.Object{}, fmt.Errorf("job %q not found", jobName)
 	}
+
+	obj, err := runBackup(ctx, d, job)
+	if err != nil {
+		notifyJob(ctx, d, job, notify.Event{
+			Type:    notify.EventBackupFailed,
+			Job:     job.Name,
+			Err:     err.Error(),
+			Started: start,
+			Elapsed: d.Now().Sub(start),
+		})
+		return storage.Object{}, err
+	}
+
+	notifyJob(ctx, d, job, notify.Event{
+		Type:    notify.EventBackupSucceeded,
+		Job:     job.Name,
+		Size:    obj.Size,
+		Started: start,
+		Elapsed: d.Now().Sub(start),
+	})
+	return obj, nil
+}
+
+func notifyJob(ctx context.Context, d Deps, job config.Job, ev notify.Event) {
+	if len(job.Notifiers) == 0 || d.Notifier == nil {
+		return
+	}
+	for _, name := range job.Notifiers {
+		nc, ok := d.Cfg.Notifier(name)
+		if !ok {
+			d.Log.Errorf("notifier %q not found in config", name)
+			continue
+		}
+		n, err := d.Notifier(nc)
+		if err != nil {
+			d.Log.Errorf("init notifier %q: %v", name, err)
+			continue
+		}
+		if err := n.Send(ctx, ev); err != nil {
+			d.Log.Errorf("send notification via %q: %v", name, err)
+		}
+	}
+}
+
+func runBackup(ctx context.Context, d Deps, job config.Job) (storage.Object, error) {
 	eng, ok := d.Engine(job.Engine)
 	if !ok {
 		return storage.Object{}, fmt.Errorf("unknown engine %q", job.Engine)
@@ -80,7 +128,7 @@ func Run(ctx context.Context, d Deps, jobName string) (storage.Object, error) {
 	}
 
 	if job.Encrypt && job.EncryptRecipient == "" {
-		return storage.Object{}, fmt.Errorf("job %q has encrypt: true but no encrypt_recipient", jobName)
+		return storage.Object{}, fmt.Errorf("job %q has encrypt: true but no encrypt_recipient", job.Name)
 	}
 
 	key := BuildKey(job.Name, d.Now(), extFor(job.Engine)) + pipeline.KeySuffix(job.Compress, job.Encrypt)

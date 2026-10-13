@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tanzid64/tui-db-manager/internal/backup"
 	"github.com/tanzid64/tui-db-manager/internal/config"
+	"github.com/tanzid64/tui-db-manager/internal/notify"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
 )
 
@@ -32,8 +33,11 @@ func newRunCmd() *cobra.Command {
 				},
 				ResolvePassword: resolvePassword(v),
 				ResolveIdentity: resolveIdentity(v),
-				Now:             time.Now,
-				Log:             app.log,
+				Notifier: func(nc config.NotifierConfig) (notify.Notifier, error) {
+					return buildNotifier(cmd.Context(), nc, v)
+				},
+				Now: time.Now,
+				Log: app.log,
 			}
 			obj, err := backup.Run(cmd.Context(), deps, args[0])
 			if err != nil {

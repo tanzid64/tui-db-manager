@@ -76,3 +76,44 @@ func TestSaveLoadWithPipelineFields(t *testing.T) {
 		t.Fatalf("pipeline fields lost: compress=%v encrypt=%v recipient=%q", j.Compress, j.Encrypt, j.EncryptRecipient)
 	}
 }
+
+func TestSaveLoadWithNotifiers(t *testing.T) {
+	dir := t.TempDir()
+	c := &Config{
+		Version: 1,
+		Jobs: []Job{{
+			Name:      "prod",
+			Engine:    "mysql",
+			Storage:   "local",
+			Notifiers: []string{"tg", "slack"},
+		}},
+		Notifiers: []NotifierConfig{
+			{Name: "tg", Type: "telegram", ChatID: "12345", BotTokenRef: "env:TG_TOKEN"},
+			{Name: "slack", Type: "webhook", URL: "https://hooks.slack.com/services/xxx"},
+			{Name: "mail", Type: "email", Host: "smtp.mail.com", Port: 587, From: "a@b.com", To: []string{"c@d.com"}},
+		},
+	}
+	if err := Save(dir, c); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got, err := Load(dir)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	j, ok := got.Job("prod")
+	if !ok || len(j.Notifiers) != 2 || j.Notifiers[0] != "tg" {
+		t.Fatalf("job notifiers mismatch: %+v", j)
+	}
+	tg, ok := got.Notifier("tg")
+	if !ok || tg.ChatID != "12345" || tg.BotTokenRef != "env:TG_TOKEN" {
+		t.Fatalf("telegram notifier mismatch: %+v", tg)
+	}
+	slack, ok := got.Notifier("slack")
+	if !ok || slack.URL != "https://hooks.slack.com/services/xxx" {
+		t.Fatalf("webhook notifier mismatch: %+v", slack)
+	}
+	mail, ok := got.Notifier("mail")
+	if !ok || mail.Host != "smtp.mail.com" || len(mail.To) != 1 {
+		t.Fatalf("email notifier mismatch: %+v", mail)
+	}
+}
