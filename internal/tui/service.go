@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"time"
 
 	"github.com/tanzid64/tui-db-manager/internal/backup"
 	"github.com/tanzid64/tui-db-manager/internal/bundle"
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
+	"github.com/tanzid64/tui-db-manager/internal/history"
 	"github.com/tanzid64/tui-db-manager/internal/logutil"
 	"github.com/tanzid64/tui-db-manager/internal/notify"
 	"github.com/tanzid64/tui-db-manager/internal/restore"
@@ -39,6 +41,7 @@ func NewService(configDir, passFile string) (*Service, error) {
 		PassFile:  passFile,
 		Log:       logutil.New(io.Discard, logutil.LevelInfo),
 	}
+	globalHistory = history.New(filepath.Join(dir, "history.jsonl"))
 	_ = s.ReloadConfig()
 	return s, nil
 }
@@ -319,14 +322,14 @@ func (s *Service) RunBackup(ctx context.Context, jobName string) (RunRecord, err
 	if err != nil {
 		rec.Status = StatusFailed
 		rec.Error = err.Error()
-		globalHistory.Add(rec)
+		globalHistory.Append(rec)
 		return rec, err
 	}
 
 	rec.Status = StatusSuccess
 	rec.Size = obj.Size
 	rec.Target = obj.Key
-	globalHistory.Add(rec)
+	globalHistory.Append(rec)
 	return rec, nil
 }
 
@@ -388,12 +391,12 @@ func (s *Service) RunRestore(ctx context.Context, jobName, key, toDB string) err
 	if err != nil {
 		rec.Status = StatusFailed
 		rec.Error = err.Error()
-		globalHistory.Add(rec)
+		globalHistory.Append(rec)
 		return err
 	}
 
 	rec.Status = StatusSuccess
-	globalHistory.Add(rec)
+	globalHistory.Append(rec)
 	return nil
 }
 

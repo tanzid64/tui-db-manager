@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/tanzid64/tui-db-manager/internal/backup"
 	"github.com/tanzid64/tui-db-manager/internal/config"
+	"github.com/tanzid64/tui-db-manager/internal/history"
 	"github.com/tanzid64/tui-db-manager/internal/notify"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
 )
@@ -39,10 +41,26 @@ func newRunCmd() *cobra.Command {
 				Now: time.Now,
 				Log: app.log,
 			}
+			start := time.Now()
 			obj, err := backup.Run(cmd.Context(), deps, args[0])
+			rec := history.RunRecord{
+				ID:       fmt.Sprintf("%s-%d", args[0], start.Unix()),
+				Job:      args[0],
+				Action:   "backup",
+				Started:  start,
+				Duration: time.Since(start),
+			}
 			if err != nil {
+				rec.Status = history.StatusFailed
+				rec.Error = err.Error()
+				_ = app.history().Append(rec)
 				return err
 			}
+			rec.Status = history.StatusSuccess
+			rec.Size = obj.Size
+			rec.Target = obj.Key
+			_ = app.history().Append(rec)
+
 			quiet, _ := cmd.Flags().GetBool("quiet")
 			if !quiet {
 				cmd.Printf("backup written: %s (%d bytes)\n", obj.Key, obj.Size)

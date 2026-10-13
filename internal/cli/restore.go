@@ -1,7 +1,11 @@
 package cli
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/spf13/cobra"
+	"github.com/tanzid64/tui-db-manager/internal/history"
 	"github.com/tanzid64/tui-db-manager/internal/restore"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
 )
@@ -44,7 +48,24 @@ func newRestoreCmd() *cobra.Command {
 				ResolveIdentity: resolveIdentity(v),
 				Log:             app.log,
 			}
-			return restore.Run(cmd.Context(), deps, args[0], at, to, yes)
+			start := time.Now()
+			err = restore.Run(cmd.Context(), deps, args[0], at, to, yes)
+			rec := history.RunRecord{
+				ID:       fmt.Sprintf("restore-%s-%d", args[0], start.Unix()),
+				Job:      args[0],
+				Action:   "restore",
+				Started:  start,
+				Duration: time.Since(start),
+				Target:   at,
+			}
+			if err != nil {
+				rec.Status = history.StatusFailed
+				rec.Error = err.Error()
+			} else {
+				rec.Status = history.StatusSuccess
+			}
+			_ = app.history().Append(rec)
+			return err
 		},
 	}
 	cmd.Flags().String("at", "", "backup key to restore (default: latest)")

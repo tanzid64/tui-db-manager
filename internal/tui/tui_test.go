@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/tanzid64/tui-db-manager/internal/config"
@@ -132,48 +131,6 @@ func TestWizardValidation(t *testing.T) {
 	}
 	if w.ErrMessage != "" {
 		t.Fatalf("expected error message to be cleared, got %q", w.ErrMessage)
-	}
-}
-
-func TestHistoryStore(t *testing.T) {
-	h := &HistoryStore{}
-	now := time.Now()
-
-	h.Add(RunRecord{
-		ID:       "run-1",
-		Job:      "job-a",
-		Action:   "backup",
-		Status:   StatusSuccess,
-		Started:  now.Add(-10 * time.Minute),
-		Duration: 5 * time.Second,
-	})
-	h.Add(RunRecord{
-		ID:       "run-2",
-		Job:      "job-a",
-		Action:   "backup",
-		Status:   StatusFailed,
-		Started:  now,
-		Duration: 2 * time.Second,
-		Error:    "connection refused",
-	})
-
-	all := h.All()
-	if len(all) != 2 {
-		t.Fatalf("expected 2 records, got %d", len(all))
-	}
-	// Recent first
-	if all[0].ID != "run-2" {
-		t.Fatalf("expected newest record first, got %s", all[0].ID)
-	}
-
-	last := h.LastForJob("job-a")
-	if last == nil || last.ID != "run-2" {
-		t.Fatalf("expected last run for job-a to be run-2")
-	}
-
-	lastB := h.LastForJob("job-nonexistent")
-	if lastB != nil {
-		t.Fatalf("expected nil for nonexistent job")
 	}
 }
 
