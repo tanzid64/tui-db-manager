@@ -28,6 +28,8 @@ type RestoreScreen struct {
 	loading      bool
 	toDBInput    textinput.Model
 	confirmInput textinput.Model
+	width        int
+	height       int
 	onBack       func() tea.Cmd
 }
 
@@ -59,6 +61,13 @@ func NewRestoreScreen(svc *Service, onBack func() tea.Cmd) RestoreScreen {
 	}
 }
 
+func (s *RestoreScreen) SetSize(width, height int) {
+	s.width = width
+	s.height = height
+	s.toDBInput.Width = ResponsiveWidth(width) - 20
+	s.confirmInput.Width = ResponsiveWidth(width) - 20
+}
+
 func (s *RestoreScreen) SelectJob(jobName string) tea.Cmd {
 	jobs := s.svc.Cfg.Jobs
 	for i, j := range jobs {
@@ -81,6 +90,9 @@ func (s *RestoreScreen) fetchBackups(jobName string) tea.Cmd {
 
 func (s RestoreScreen) Update(msg tea.Msg) (RestoreScreen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		s.SetSize(msg.Width, msg.Height)
+		return s, nil
 	case backupListResultMsg:
 		s.loading = false
 		if msg.err != nil {
@@ -308,5 +320,5 @@ func (s RestoreScreen) View() string {
 		b.WriteString(styleHelp.Render("↑/k, ↓/j: Navigate • Enter: Select • Esc: Back"))
 	}
 
-	return styleBox.Render(b.String())
+	return RenderBox(b.String(), s.width)
 }

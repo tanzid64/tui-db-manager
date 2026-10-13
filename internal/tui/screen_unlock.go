@@ -12,6 +12,8 @@ type UnlockScreen struct {
 	input      textinput.Model
 	isInit     bool
 	errMsg     string
+	width      int
+	height     int
 	onUnlocked func() tea.Cmd
 }
 
@@ -30,12 +32,21 @@ func NewUnlockScreen(svc *Service, onUnlocked func() tea.Cmd) UnlockScreen {
 	}
 }
 
+func (s *UnlockScreen) SetSize(width, height int) {
+	s.width = width
+	s.height = height
+	s.input.Width = ResponsiveWidth(width) - 20
+}
+
 func (s UnlockScreen) Init() tea.Cmd {
 	return textinput.Blink
 }
 
 func (s UnlockScreen) Update(msg tea.Msg) (UnlockScreen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		s.SetSize(msg.Width, msg.Height)
+		return s, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -89,5 +100,5 @@ func (s UnlockScreen) View() string {
 	}
 
 	b.WriteString(styleHelp.Render("Enter: Submit • Esc / Ctrl+C: Quit"))
-	return styleBox.Render(b.String())
+	return RenderBox(b.String(), s.width)
 }

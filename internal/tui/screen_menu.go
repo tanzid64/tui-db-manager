@@ -15,6 +15,8 @@ type MenuItem struct {
 type MenuScreen struct {
 	items    []MenuItem
 	selected int
+	width    int
+	height   int
 	onSelect func(index int) tea.Cmd
 }
 
@@ -35,8 +37,16 @@ func NewMenuScreen(onSelect func(index int) tea.Cmd) MenuScreen {
 	}
 }
 
+func (m *MenuScreen) SetSize(width, height int) {
+	m.width = width
+	m.height = height
+}
+
 func (m MenuScreen) Update(msg tea.Msg) (MenuScreen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.SetSize(msg.Width, msg.Height)
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
@@ -81,5 +91,5 @@ func (m MenuScreen) View() string {
 	}
 
 	b.WriteString(styleHelp.Render("↑/k, ↓/j: Navigate • Enter: Select • u: Updates • q: Quit"))
-	return styleBox.Render(b.String())
+	return RenderBox(b.String(), m.width)
 }

@@ -13,13 +13,17 @@ import (
 )
 
 type JobsScreen struct {
-	svc          *Service
-	selected     int
-	statusMsg    string
-	isWizardOpen bool
-	wizard       WizardModel
-	onBack       func() tea.Cmd
-	onRestoreJob func(jobName string) tea.Cmd
+	svc            *Service
+	selected       int
+	statusMsg      string
+	isWizardOpen   bool
+	wizard         WizardModel
+	width          int
+	height         int
+	isEditing      bool
+	editingJobName string
+	onBack         func() tea.Cmd
+	onRestoreJob   func(jobName string) tea.Cmd
 }
 
 type jobRunResultMsg struct {
@@ -36,7 +40,26 @@ func NewJobsScreen(svc *Service, onBack func() tea.Cmd, onRestoreJob func(string
 	}
 }
 
+func (s *JobsScreen) SetSize(width, height int) {
+	s.width = width
+	s.height = height
+	if s.isWizardOpen {
+		s.wizard.SetSize(width, height)
+	}
+}
+
 func (s JobsScreen) Update(msg tea.Msg) (JobsScreen, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		s.SetSize(msg.Width, msg.Height)
+		if s.isWizardOpen {
+			var cmd tea.Cmd
+			s.wizard, cmd = s.wizard.Update(msg)
+			return s, cmd
+		}
+		return s, nil
+	}
+
 	if s.isWizardOpen {
 		var cmd tea.Cmd
 		s.wizard, cmd = s.wizard.Update(msg)
@@ -91,8 +114,13 @@ func (s JobsScreen) Update(msg tea.Msg) (JobsScreen, tea.Cmd) {
 				}
 			}
 		case "a":
-			s.openAddJobWizard()
+			s.openJobWizard(nil)
 			return s, nil
+		case "e":
+			if len(jobs) > 0 && s.selected < len(jobs) {
+				s.openJobWizard(&jobs[s.selected])
+				return s, nil
+			}
 		case "b":
 			if len(jobs) > 0 && s.selected < len(jobs) && s.onRestoreJob != nil {
 				return s, s.onRestoreJob(jobs[s.selected].Name)
@@ -118,7 +146,66 @@ func (s JobsScreen) Update(msg tea.Msg) (JobsScreen, tea.Cmd) {
 	return s, nil
 }
 
-func (s *JobsScreen) openAddJobWizard() {
+func parseScheduleSelection(freqOption, customCron string) string {
+	switch freqOption {
+	case "Every 15 minutes":
+		return "*/15 * * * *"
+	case "Every 30 minutes":
+		return "*/30 * * * *"
+	case "Hourly":
+		return "0 * * * *"
+	case "Every 6 hours":
+		return "0 */6 * * *"
+	case "Every 12 hours":
+		return "0 */12 * * *"
+	case "Daily at midnight (00:00)":
+		return "0 0 * * *"
+	case "Daily at 2:00 AM (02:00)":
+		return "0 2 * * *"
+	case "Weekly on Sunday (00:00)":
+		return "0 0 * * 0"
+	case "Monthly (1st of month)":
+		return "0 0 1 * *"
+	case "Custom Cron Expression":
+		return strings.TrimSpace(customCron)
+	default:
+		if strings.TrimSpace(customCron) != "" {
+			return strings.TrimSpace(customCron)
+		}
+		return ""
+	}
+}
+
+func matchSchedulePreset(cron string) (string, int, string) {
+	cron = strings.TrimSpace(cron)
+	if cron == "" {
+		return "Manual only (No schedule)", 0, ""
+	}
+	switch cron {
+	case "*/15 * * * *":
+		return "Every 15 minutes", 1, ""
+	case "*/30 * * * *":
+		return "Every 30 minutes", 2, ""
+	case "0 * * * *":
+		return "Hourly", 3, ""
+	case "0 */6 * * *":
+		return "Every 6 hours", 4, ""
+	case "0 */12 * * *":
+		return "Every 12 hours", 5, ""
+	case "0 0 * * *":
+		return "Daily at midnight (00:00)", 6, ""
+	case "0 2 * * *":
+		return "Daily at 2:00 AM (02:00)", 7, ""
+	case "0 0 * * 0":
+		return "Weekly on Sunday (00:00)", 8, ""
+	case "0 0 1 * *":
+		return "Monthly (1st of month)", 9, ""
+	default:
+		return "Custom Cron Expression", 10, cron
+	}
+}
+
+func (s *JobsScreen) openJobWizard(existing *config.Job) {
 	storageNames := make([]string, 0)
 	for _, st := range s.svc.Cfg.Storages {
 		storageNames = append(storageNames, st.Name)
@@ -127,54 +214,149 @@ func (s *JobsScreen) openAddJobWizard() {
 		storageNames = append(storageNames, "default-local")
 	}
 
+	selectedStorageIdx := 0
+	keepLastStr := "7"
+	compressChecked := true
+	encryptChecked := false
+	freqSelectedIdx := 0
+	customCronVal := ""
+
+	if existing != nil {
+		s.isEditing = true
+		s.editingJobName = existing.Name
+		for idx, stName := range storageNames {
+			if stName == existing.Storage {
+				selectedStorageIdx = idx
+				break
+			}
+		}
+		if existing.Retention.KeepLast > 0 {
+			keepLastStr = strconv.Itoa(existing.Retention.KeepLast)
+		}
+		compressChecked = existing.Compress
+		encryptChecked = existing.Encrypt
+		_, freqSelectedIdx, customCronVal = matchSchedulePreset(existing.Schedule)
+	} else {
+		s.isEditing = false
+		s.editingJobName = ""
+	}
+
+	freqOptions := []string{
+		"Manual only (No schedule)",
+		"Every 15 minutes",
+		"Every 30 minutes",
+		"Hourly",
+		"Every 6 hours",
+		"Every 12 hours",
+		"Daily at midnight (00:00)",
+		"Daily at 2:00 AM (02:00)",
+		"Weekly on Sunday (00:00)",
+		"Monthly (1st of month)",
+		"Custom Cron Expression",
+	}
+
 	storageStep := WizardStep{
-		Title:       "Storage & Retention",
-		Description: "Select target storage backend and backup retention count",
+		Title:       "Storage & Schedule",
+		Description: "Target storage destination, automated run schedule, and retention count",
 		Fields: []WizardField{
-			{Key: "storage", Label: "Storage Destination", Type: FieldSelect, Options: storageNames},
-			{Key: "keep_last", Label: "Keep Last Backups", Placeholder: "7", Type: FieldText},
-			{Key: "compress", Label: "Gzip Compress", Type: FieldCheckbox, Checked: true},
-			{Key: "encrypt", Label: "Age Encrypt", Type: FieldCheckbox, Checked: false},
+			{Key: "storage", Label: "Storage Destination", Type: FieldSelect, Options: storageNames, SelectedOpt: selectedStorageIdx},
+			{Key: "schedule", Label: "Run Schedule", Type: FieldSelect, Options: freqOptions, SelectedOpt: freqSelectedIdx},
+			{Key: "custom_cron", Label: "Custom Cron (if selected)", Placeholder: "0 2 * * *", Value: customCronVal, Type: FieldText},
+			{Key: "keep_last", Label: "Keep Last Backups", Placeholder: "7", Value: keepLastStr, Type: FieldText},
+			{Key: "compress", Label: "Gzip Compress", Type: FieldCheckbox, Checked: compressChecked},
+			{Key: "encrypt", Label: "Age Encrypt", Type: FieldCheckbox, Checked: encryptChecked},
 		},
+	}
+
+	engineOptions := []string{"mysql", "postgres", "mongodb", "sqlite"}
+	engineSelectedIdx := 0
+	jobNameVal := ""
+	sqlitePathVal := ""
+	hostVal := "127.0.0.1"
+	portVal := "3306"
+	userVal := "root"
+	pwdVal := ""
+	tlsChecked := false
+	dbVal := ""
+
+	if existing != nil {
+		jobNameVal = existing.Name
+		for idx, eng := range engineOptions {
+			if strings.EqualFold(eng, existing.Engine) {
+				engineSelectedIdx = idx
+				break
+			}
+		}
+		sqlitePathVal = existing.Conn.Path
+		if existing.Conn.Host != "" {
+			hostVal = existing.Conn.Host
+		}
+		if existing.Conn.Port > 0 {
+			portVal = strconv.Itoa(existing.Conn.Port)
+		}
+		userVal = existing.Conn.User
+		dbVal = existing.Conn.Database
+		tlsChecked = existing.Conn.TLS
+		if s.svc.Vault != nil {
+			pwdVal, _ = s.svc.Vault.Get("job/" + existing.Name + "/password")
+		}
 	}
 
 	stepIdentity := WizardStep{
 		Title:       "Job Identity",
-		Description: "Set the job name and target database engine",
+		Description: "Job identification and database engine selection",
 		Fields: []WizardField{
-			{Key: "name", Label: "Job Name", Placeholder: "production-mysql", Type: FieldText},
-			{Key: "engine", Label: "Database Engine", Type: FieldSelect, Options: []string{"mysql", "postgres", "mongodb", "sqlite"}},
+			{Key: "name", Label: "Job Name", Placeholder: "production-backup", Value: jobNameVal, Type: FieldText},
+			{Key: "engine", Label: "Database Engine", Type: FieldSelect, Options: engineOptions, SelectedOpt: engineSelectedIdx},
 		},
 	}
 
-	stepConn := WizardStep{
-		Title:       "Server Connection",
-		Description: "Connection parameters for the database server",
-		Fields: []WizardField{
-			{Key: "host", Label: "Host", Placeholder: "127.0.0.1", Type: FieldText},
-			{Key: "port", Label: "Port", Placeholder: "3306", Type: FieldText},
-			{Key: "user", Label: "Username", Placeholder: "root", Type: FieldText},
-			{Key: "password", Label: "Password (Vault)", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
-			{Key: "tls", Label: "Use TLS", Type: FieldCheckbox, Checked: false},
-		},
+	var steps []WizardStep
+	if existing != nil && strings.ToLower(existing.Engine) == "sqlite" {
+		sqliteStep := WizardStep{
+			Title:       "SQLite Configuration",
+			Description: "Path to SQLite database file (no network host/credentials needed)",
+			Fields: []WizardField{
+				{Key: "path", Label: "SQLite DB Path", Placeholder: "/path/to/db.sqlite", Value: sqlitePathVal, Type: FieldText},
+			},
+		}
+		steps = []WizardStep{stepIdentity, sqliteStep, storageStep}
+	} else {
+		connStep := WizardStep{
+			Title:       "Server Connection",
+			Description: "Connection parameters for the database server",
+			Fields: []WizardField{
+				{Key: "host", Label: "Host", Placeholder: "127.0.0.1", Value: hostVal, Type: FieldText},
+				{Key: "port", Label: "Port", Placeholder: portVal, Value: portVal, Type: FieldText},
+				{Key: "user", Label: "Username", Placeholder: userVal, Value: userVal, Type: FieldText},
+				{Key: "password", Label: "Password (Vault)", Placeholder: "••••••••", Value: pwdVal, Type: FieldText, IsSecret: true},
+				{Key: "tls", Label: "Use TLS", Type: FieldCheckbox, Checked: tlsChecked},
+			},
+		}
+		stepDb := WizardStep{
+			Title:       "Target Database",
+			Description: "Select target database from server",
+			Fields: []WizardField{
+				{Key: "database", Label: "Database Name", Placeholder: "app_prod", Value: dbVal, Type: FieldText},
+			},
+		}
+		steps = []WizardStep{stepIdentity, connStep, stepDb, storageStep}
 	}
 
-	stepDb := WizardStep{
-		Title:       "Target Database",
-		Description: "Select target database from server",
-		Fields: []WizardField{
-			{Key: "database", Label: "Database Name", Placeholder: "app_prod", Type: FieldText},
-		},
+	wizardTitle := "Add New Backup Job"
+	if s.isEditing {
+		wizardTitle = fmt.Sprintf("Edit Backup Job: %s", existing.Name)
 	}
-
-	steps := []WizardStep{stepIdentity, stepConn, stepDb, storageStep}
 
 	w := NewWizard(
-		"Add New Backup Job",
+		wizardTitle,
 		steps,
 		nil,
 		nil,
 	)
+	if s.width > 0 {
+		w.SetSize(s.width, s.height)
+	}
 
 	w.OnStepAdvance = func(wiz *WizardModel, currentStep int) {
 		vals := wiz.CollectValues()
@@ -186,10 +368,10 @@ func (s *JobsScreen) openAddJobWizard() {
 		if currentStep == 0 {
 			if engine == "sqlite" {
 				sqliteStep := WizardStep{
-					Title:       "SQLite Connection",
-					Description: "Specify path to SQLite database file",
+					Title:       "SQLite Configuration",
+					Description: "Path to SQLite database file (no network host/credentials needed)",
 					Fields: []WizardField{
-						{Key: "path", Label: "SQLite Path", Placeholder: "/path/to/db.sqlite", Type: FieldText},
+						{Key: "path", Label: "SQLite DB Path", Placeholder: "/path/to/db.sqlite", Value: vals["path"], Type: FieldText},
 					},
 				}
 				wiz.SetSteps([]WizardStep{wiz.Steps[0], sqliteStep, storageStep})
@@ -204,17 +386,38 @@ func (s *JobsScreen) openAddJobWizard() {
 					portPlaceholder = "27017"
 					userPlaceholder = "admin"
 				}
+
+				hostValCurr := vals["host"]
+				if hostValCurr == "" {
+					hostValCurr = "127.0.0.1"
+				}
+				portValCurr := vals["port"]
+				if portValCurr == "" {
+					portValCurr = portPlaceholder
+				}
+				userValCurr := vals["user"]
+				if userValCurr == "" {
+					userValCurr = userPlaceholder
+				}
+
 				connFields := []WizardField{
-					{Key: "host", Label: "Host", Placeholder: "127.0.0.1", Type: FieldText},
-					{Key: "port", Label: "Port", Placeholder: portPlaceholder, Type: FieldText},
-					{Key: "user", Label: "Username", Placeholder: userPlaceholder, Type: FieldText},
-					{Key: "password", Label: "Password (Vault)", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
-					{Key: "tls", Label: "Use TLS", Type: FieldCheckbox, Checked: false},
+					{Key: "host", Label: "Host", Placeholder: "127.0.0.1", Value: hostValCurr, Type: FieldText},
+					{Key: "port", Label: "Port", Placeholder: portPlaceholder, Value: portValCurr, Type: FieldText},
+					{Key: "user", Label: "Username", Placeholder: userPlaceholder, Value: userValCurr, Type: FieldText},
+					{Key: "password", Label: "Password (Vault)", Placeholder: "••••••••", Value: vals["password"], Type: FieldText, IsSecret: true},
+					{Key: "tls", Label: "Use TLS", Type: FieldCheckbox, Checked: vals["tls"] == "true"},
 				}
 				connStep := WizardStep{
 					Title:       "Server Connection",
 					Description: "Connection parameters for the database server",
 					Fields:      connFields,
+				}
+				stepDb := WizardStep{
+					Title:       "Target Database",
+					Description: "Select target database from server",
+					Fields: []WizardField{
+						{Key: "database", Label: "Database Name", Placeholder: "app_prod", Value: vals["database"], Type: FieldText},
+					},
 				}
 				wiz.SetSteps([]WizardStep{wiz.Steps[0], connStep, stepDb, storageStep})
 			}
@@ -248,11 +451,19 @@ func (s *JobsScreen) openAddJobWizard() {
 			cancel()
 
 			if err == nil && len(dbs) > 0 {
+				selectedDbIdx := 0
+				existingDbName := vals["database"]
+				for idx, d := range dbs {
+					if d == existingDbName {
+						selectedDbIdx = idx
+						break
+					}
+				}
 				wiz.Steps[2] = WizardStep{
 					Title:       "Target Database",
 					Description: fmt.Sprintf("Discovered %d databases on %s:%d — choose target database", len(dbs), host, port),
 					Fields: []WizardField{
-						{Key: "database", Label: "Database Name", Type: FieldSelect, Options: dbs},
+						{Key: "database", Label: "Database Name", Type: FieldSelect, Options: dbs, SelectedOpt: selectedDbIdx},
 					},
 				}
 				InitFields(wiz.Steps[2].Fields)
@@ -265,7 +476,7 @@ func (s *JobsScreen) openAddJobWizard() {
 					Title:       "Target Database",
 					Description: desc,
 					Fields: []WizardField{
-						{Key: "database", Label: "Database Name", Placeholder: "app_prod", Type: FieldText},
+						{Key: "database", Label: "Database Name", Placeholder: "app_prod", Value: vals["database"], Type: FieldText},
 					},
 				}
 				InitFields(wiz.Steps[2].Fields)
@@ -281,7 +492,7 @@ func (s *JobsScreen) openAddJobWizard() {
 				return errors.New("job name cannot be empty")
 			}
 			for _, existing := range s.svc.Cfg.Jobs {
-				if existing.Name == name {
+				if existing.Name == name && (!s.isEditing || name != s.editingJobName) {
 					return fmt.Errorf("job %q already exists", name)
 				}
 			}
@@ -332,6 +543,8 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 		host = "127.0.0.1"
 	}
 
+	sched := parseScheduleSelection(vals["schedule"], vals["custom_cron"])
+
 	job := config.Job{
 		Name:   name,
 		Engine: engine,
@@ -347,6 +560,7 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 		Retention: config.Retention{KeepLast: keepLast},
 		Compress:  vals["compress"] == "true",
 		Encrypt:   vals["encrypt"] == "true",
+		Schedule:  sched,
 	}
 
 	// Store password in vault if provided
@@ -355,9 +569,29 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 		_ = s.svc.Vault.Save()
 	}
 
-	s.svc.Cfg.Jobs = append(s.svc.Cfg.Jobs, job)
-	_ = s.svc.SaveConfig()
-	s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added job %q", name))
+	if s.isEditing {
+		updated := false
+		for i, existingJob := range s.svc.Cfg.Jobs {
+			if existingJob.Name == s.editingJobName {
+				s.svc.Cfg.Jobs[i] = job
+				updated = true
+				break
+			}
+		}
+		if !updated {
+			s.svc.Cfg.Jobs = append(s.svc.Cfg.Jobs, job)
+		}
+		if s.editingJobName != name && s.svc.Vault != nil {
+			s.svc.Vault.Delete("job/" + s.editingJobName + "/password")
+			_ = s.svc.Vault.Save()
+		}
+		_ = s.svc.SaveConfig()
+		s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Updated job %q successfully", name))
+	} else {
+		s.svc.Cfg.Jobs = append(s.svc.Cfg.Jobs, job)
+		_ = s.svc.SaveConfig()
+		s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added job %q", name))
+	}
 }
 
 func (s JobsScreen) View() string {
@@ -396,6 +630,11 @@ func (s JobsScreen) View() string {
 				featStr = fmt.Sprintf("[%s]", strings.Join(features, "+"))
 			}
 
+			schedStr := ""
+			if j.Schedule != "" {
+				schedStr = styleWarning.Render(fmt.Sprintf("⏰ %s", j.Schedule))
+			}
+
 			lastRun := globalHistory.LastForJob(j.Name)
 			statusBadge := styleHelp.Render("(Never run)")
 			if lastRun != nil {
@@ -406,13 +645,16 @@ func (s JobsScreen) View() string {
 				}
 			}
 
-			b.WriteString(fmt.Sprintf("%s%s  %s  %s  %s\n",
+			details := fmt.Sprintf("(%s → %s, keep %d)", j.Engine, j.Storage, j.Retention.KeepLast)
+			line := fmt.Sprintf("%s%s  %s  %s  %s  %s\n",
 				prefix,
 				itemStyle.Render(j.Name),
-				styleSubtitle.Render(fmt.Sprintf("(%s → %s, keep %d)", j.Engine, j.Storage, j.Retention.KeepLast)),
+				styleSubtitle.Render(details),
 				featStr,
+				schedStr,
 				statusBadge,
-			))
+			)
+			b.WriteString(line)
 		}
 		b.WriteString("\n")
 	}
@@ -421,6 +663,6 @@ func (s JobsScreen) View() string {
 		b.WriteString(s.statusMsg + "\n\n")
 	}
 
-	b.WriteString(styleHelp.Render("r: Run now • a: Add job • d: Delete • b: Backups/Restore • Esc: Back"))
-	return styleBox.Render(b.String())
+	b.WriteString(styleHelp.Render("r: Run • a: Add • e: Edit • d: Delete • b: Restore • Esc: Back"))
+	return RenderBox(b.String(), s.width)
 }

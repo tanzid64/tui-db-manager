@@ -73,3 +73,36 @@ func init() {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
 }
+
+// ResponsiveWidth calculates an optimal content/box width based on terminal width.
+func ResponsiveWidth(termWidth int) int {
+	if termWidth <= 0 {
+		return 80
+	}
+	w := termWidth - 4
+	if w < 48 {
+		w = 48
+	}
+	if w > 120 {
+		w = 120
+	}
+	return w
+}
+
+// RenderBox wraps content in a rounded border box scaled responsively to termWidth.
+func RenderBox(content string, termWidth int) string {
+	b := styleBox.Copy()
+	if termWidth > 0 {
+		b = b.Width(ResponsiveWidth(termWidth))
+	}
+	return b.Render(content)
+}
+
+// RenderHeader renders the top title bar spanning the responsive width.
+func RenderHeader(text string, termWidth int) string {
+	h := styleHeader.Copy()
+	if termWidth > 0 {
+		h = h.Width(ResponsiveWidth(termWidth) + 2)
+	}
+	return h.Render(text)
+}

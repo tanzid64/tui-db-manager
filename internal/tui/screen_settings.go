@@ -25,6 +25,8 @@ type SettingsScreen struct {
 	isWizardOpen  bool
 	activeOpt     SettingsOption
 	wizard        WizardModel
+	width         int
+	height        int
 	onBack        func() tea.Cmd
 	onCheckUpdate func() tea.Cmd
 }
@@ -38,7 +40,26 @@ func NewSettingsScreen(svc *Service, onBack func() tea.Cmd, onCheckUpdate func()
 	}
 }
 
+func (s *SettingsScreen) SetSize(width, height int) {
+	s.width = width
+	s.height = height
+	if s.isWizardOpen {
+		s.wizard.SetSize(width, height)
+	}
+}
+
 func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		s.SetSize(msg.Width, msg.Height)
+		if s.isWizardOpen {
+			var cmd tea.Cmd
+			s.wizard, cmd = s.wizard.Update(msg)
+			return s, cmd
+		}
+		return s, nil
+	}
+
 	if s.isWizardOpen {
 		var cmd tea.Cmd
 		s.wizard, cmd = s.wizard.Update(msg)
@@ -306,7 +327,7 @@ func (s SettingsScreen) View() string {
 	}
 
 	b.WriteString(styleHelp.Render("↑/k, ↓/j: Navigate • Enter: Open • Esc: Back"))
-	return styleBox.Render(b.String())
+	return RenderBox(b.String(), s.width)
 }
 
 func (s *SettingsScreen) SetStatusMsg(msg string) {

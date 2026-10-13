@@ -162,6 +162,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
+		a.unlockScreen.SetSize(msg.Width, msg.Height)
+		a.menuScreen.SetSize(msg.Width, msg.Height)
+		a.jobsScreen.SetSize(msg.Width, msg.Height)
+		a.storageScreen.SetSize(msg.Width, msg.Height)
+		a.notifyScreen.SetSize(msg.Width, msg.Height)
+		a.restoreScreen.SetSize(msg.Width, msg.Height)
+		a.settingsScreen.SetSize(msg.Width, msg.Height)
+		a.logsScreen.SetSize(msg.Width, msg.Height)
 		return a, nil
 
 	case updateCheckMsg:
@@ -295,7 +303,7 @@ func (a *App) View() string {
 	if a.updateRelease != nil {
 		headerText += fmt.Sprintf(" • 🔔 Update Available (%s, press 'u')", a.updateRelease.TagName)
 	}
-	header := styleHeader.Render(headerText)
+	header := RenderHeader(headerText, a.width)
 
 	var footer string
 	if a.svc.IsVaultUnlocked() {
@@ -349,7 +357,7 @@ func (a *App) renderUpdateModal() string {
 		b.WriteString(styleHelp.Render("Tab / ← / →: Choose • Enter: Confirm • Esc: Dismiss"))
 	}
 
-	return styleBox.Render(b.String())
+	return RenderBox(b.String(), a.width)
 }
 
 // Run launches the Bubble Tea TUI application.

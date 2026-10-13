@@ -27,6 +27,7 @@ type Job struct {
 	Retention Retention `yaml:"retention" json:"retention"`
 	Compress  bool      `yaml:"compress,omitempty" json:"compress,omitempty"` // gzip-compress before upload
 	Encrypt   bool      `yaml:"encrypt,omitempty" json:"encrypt,omitempty"`   // age-encrypt before upload
+	Schedule  string    `yaml:"schedule,omitempty" json:"schedule,omitempty"` // cron schedule expression
 	// EncryptRecipient is the age X25519 public key ("age1..."). Required when Encrypt is true.
 	// The corresponding identity (private key) lives in the vault under "job/<name>/age_identity".
 	EncryptRecipient string   `yaml:"encrypt_recipient,omitempty" json:"encrypt_recipient,omitempty"`

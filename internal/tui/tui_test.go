@@ -355,26 +355,11 @@ func TestJobsScreenWizardEnterCompletion(t *testing.T) {
 		t.Fatalf("expected step 3 (Storage & Retention), got %d", screen.wizard.ActiveStep)
 	}
 
-	// Step 3: Storage & Retention
-	// Fields: 0: storage (select), 1: keep_last (text), 2: compress (checkbox), 3: encrypt (checkbox)
-	// Press Enter on field 0 -> field 1
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if screen.wizard.ActiveField != 1 {
-		t.Fatalf("expected active field 1, got %d", screen.wizard.ActiveField)
+	// Step 3: Storage & Schedule (6 fields)
+	// Fields: 0: storage (select), 1: schedule (select), 2: custom_cron (text), 3: keep_last (text), 4: compress (checkbox), 5: encrypt (checkbox)
+	for i := 0; i < 6; i++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	}
-	// Press Enter on field 1 -> field 2
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if screen.wizard.ActiveField != 2 {
-		t.Fatalf("expected active field 2, got %d", screen.wizard.ActiveField)
-	}
-	// Press Enter on field 2 -> field 3 (Age Encrypt)
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if screen.wizard.ActiveField != 3 {
-		t.Fatalf("expected active field 3 (encrypt), got %d", screen.wizard.ActiveField)
-	}
-
-	// Now press Enter on field 3 (final field of final step)
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Verify wizard is now closed and Done
 	if screen.isWizardOpen {
@@ -474,8 +459,8 @@ func TestJobsScreenWizardLiveDatabaseSelection(t *testing.T) {
 		t.Fatalf("expected step 3, got %d", screen.wizard.ActiveStep)
 	}
 
-	// Press Enter across storage fields to complete
-	for i := 0; i < 4; i++ {
+	// Press Enter across storage and schedule fields to complete
+	for i := 0; i < 6; i++ {
 		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	}
 
@@ -711,5 +696,135 @@ func TestAppUpdateFlow(t *testing.T) {
 	app = model.(*App)
 	if app.showUpdateModal {
 		t.Fatalf("expected esc to dismiss modal")
+	}
+}
+
+func TestJobsScreenEditJobAndSQLiteWizard(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	screen := NewJobsScreen(svc, nil, nil)
+	screen.SetSize(100, 30)
+
+	// 1. Test SQLite job creation only shows path and skips host/port/discovery
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("sqlite-app")})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter}) // to engine select
+	// Select sqlite (option 3)
+	for i := 0; i < 3; i++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
+	}
+	if screen.wizard.Steps[0].Fields[1].SelectedOpt != 3 {
+		t.Fatalf("expected sqlite selected")
+	}
+
+	// Press Enter to advance to SQLite step
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if len(screen.wizard.Steps) != 3 {
+		t.Fatalf("expected 3 steps for SQLite, got %d", len(screen.wizard.Steps))
+	}
+	if len(screen.wizard.Steps[1].Fields) != 1 || screen.wizard.Steps[1].Fields[0].Key != "path" {
+		t.Fatalf("expected SQLite step to only have 'path' field, got: %+v", screen.wizard.Steps[1].Fields)
+	}
+
+	// Enter sqlite path
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/data/app.db")})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter}) // to storage step
+
+	if screen.wizard.ActiveStep != 2 {
+		t.Fatalf("expected to jump directly to storage step 2, got %d", screen.wizard.ActiveStep)
+	}
+
+	// Advance across storage fields
+	// storage (0) -> enter -> schedule (1)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// on schedule: select "Daily at 2:00 AM" (option 7)
+	for i := 0; i < 7; i++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
+	}
+	// enter across rest of fields: custom_cron(2), keep_last(3), compress(4), encrypt(5) -> finish!
+	for i := 0; i < 5; i++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+
+	if screen.isWizardOpen {
+		t.Fatalf("expected wizard to close after finish")
+	}
+	if len(svc.Cfg.Jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(svc.Cfg.Jobs))
+	}
+	j := svc.Cfg.Jobs[0]
+	if j.Name != "sqlite-app" || j.Engine != "sqlite" || j.Conn.Path != "/data/app.db" || j.Schedule != "0 2 * * *" {
+		t.Fatalf("unexpected sqlite job: %+v", j)
+	}
+
+	// 2. Test Editing the job by pressing 'e'
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	if !screen.isWizardOpen || !screen.isEditing || screen.editingJobName != "sqlite-app" {
+		t.Fatalf("expected edit wizard to open for 'sqlite-app'")
+	}
+	if screen.wizard.Steps[0].Fields[0].Input.Value() != "sqlite-app" {
+		t.Fatalf("expected pre-populated name 'sqlite-app', got %s", screen.wizard.Steps[0].Fields[0].Input.Value())
+	}
+	if screen.wizard.Steps[1].Fields[0].Input.Value() != "/data/app.db" {
+		t.Fatalf("expected pre-populated path '/data/app.db', got %s", screen.wizard.Steps[1].Fields[0].Input.Value())
+	}
+	if screen.wizard.Steps[2].Fields[1].SelectedOpt != 7 {
+		t.Fatalf("expected schedule pre-selected opt 7, got %d", screen.wizard.Steps[2].Fields[1].SelectedOpt)
+	}
+}
+
+func TestStorageScreenEditStorage(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	svc.Cfg.Storages = []config.StorageConfig{
+		{Name: "my-s3", Type: "s3", Bucket: "old-bucket", Region: "us-west-1"},
+	}
+
+	screen := NewStorageScreen(svc, nil)
+	screen.SetSize(120, 30)
+
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	if !screen.isWizardOpen || !screen.isEditing || screen.editingStorName != "my-s3" {
+		t.Fatalf("expected edit wizard for 'my-s3'")
+	}
+
+	if screen.wizard.Steps[0].Fields[0].Input.Value() != "my-s3" {
+		t.Fatalf("expected pre-filled name 'my-s3'")
+	}
+	if screen.wizard.Steps[1].Fields[0].Input.Value() != "old-bucket" {
+		t.Fatalf("expected pre-filled bucket 'old-bucket'")
+	}
+}
+
+func TestNotifyScreenEditNotifier(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	svc.Cfg.Notifiers = []config.NotifierConfig{
+		{Name: "tg-alerts", Type: "telegram", ChatID: "-100123"},
+	}
+
+	screen := NewNotifyScreen(svc, nil)
+	screen.SetSize(120, 30)
+
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	if !screen.isWizardOpen || !screen.isEditing || screen.editingChanName != "tg-alerts" {
+		t.Fatalf("expected edit wizard for 'tg-alerts'")
+	}
+
+	if screen.wizard.Steps[0].Fields[0].Input.Value() != "tg-alerts" {
+		t.Fatalf("expected pre-filled name 'tg-alerts'")
+	}
+	if screen.wizard.Steps[1].Fields[1].Input.Value() != "-100123" {
+		t.Fatalf("expected pre-filled chat_id '-100123'")
 	}
 }

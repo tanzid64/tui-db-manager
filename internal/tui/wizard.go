@@ -20,6 +20,7 @@ type WizardField struct {
 	Key         string
 	Label       string
 	Placeholder string
+	Value       string
 	Type        FieldType
 	Options     []string // for FieldSelect
 	SelectedOpt int      // for FieldSelect
@@ -43,6 +44,8 @@ type WizardModel struct {
 	Done          bool
 	Canceled      bool
 	Values        map[string]string
+	width         int
+	height        int
 	OnFinish      func(values map[string]string) tea.Cmd
 	OnCancel      func() tea.Cmd
 	ValidateStep  func(stepIndex int, values map[string]string) error
@@ -54,7 +57,7 @@ func InitFields(fields []WizardField) []WizardField {
 	for fIdx := range fields {
 		f := &fields[fIdx]
 		if f.Type == FieldText {
-			if f.Input.Prompt != "" || f.Input.Value() != "" {
+			if f.Input.Prompt != "" {
 				continue
 			}
 			ti := textinput.New()
@@ -63,10 +66,60 @@ func InitFields(fields []WizardField) []WizardField {
 				ti.EchoMode = textinput.EchoPassword
 				ti.EchoCharacter = '•'
 			}
+			if f.Value != "" {
+				ti.SetValue(f.Value)
+			}
 			f.Input = ti
 		}
 	}
 	return fields
+}
+
+// SetSize updates terminal dimensions and adjusts input widths.
+func (w *WizardModel) SetSize(width, height int) {
+	w.width = width
+	w.height = height
+	inputWidth := ResponsiveWidth(width) - 30
+	if inputWidth < 20 {
+		inputWidth = 20
+	}
+	if inputWidth > 60 {
+		inputWidth = 60
+	}
+	for sIdx := range w.Steps {
+		for fIdx := range w.Steps[sIdx].Fields {
+			if w.Steps[sIdx].Fields[fIdx].Type == FieldText {
+				w.Steps[sIdx].Fields[fIdx].Input.Width = inputWidth
+			}
+		}
+	}
+}
+
+// SetValues pre-fills existing values into matching fields across all steps.
+func (w *WizardModel) SetValues(vals map[string]string) {
+	for k, v := range vals {
+		for sIdx := range w.Steps {
+			for fIdx := range w.Steps[sIdx].Fields {
+				f := &w.Steps[sIdx].Fields[fIdx]
+				if f.Key == k {
+					switch f.Type {
+					case FieldText:
+						f.Value = v
+						f.Input.SetValue(v)
+					case FieldSelect:
+						for optIdx, opt := range f.Options {
+							if strings.EqualFold(opt, v) {
+								f.SelectedOpt = optIdx
+								break
+							}
+						}
+					case FieldCheckbox:
+						f.Checked = (v == "true" || v == "1" || v == "yes")
+					}
+				}
+			}
+		}
+	}
 }
 
 // SetStepFields updates the fields for the specified step and initializes them.
@@ -150,6 +203,10 @@ func (w *WizardModel) Update(msg tea.Msg) (WizardModel, tea.Cmd) {
 	step := &w.Steps[w.ActiveStep]
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		w.SetSize(msg.Width, msg.Height)
+		return *w, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
@@ -316,5 +373,5 @@ func (w WizardModel) View() string {
 
 	// Navigation Help
 	b.WriteString(styleHelp.Render("Space: Toggle • Tab/Down: Next • Shift+Tab/Up: Prev • Enter: Next/Submit • Esc: Back"))
-	return styleBox.Render(b.String())
+	return RenderBox(b.String(), w.width)
 }

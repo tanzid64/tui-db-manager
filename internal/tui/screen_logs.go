@@ -9,6 +9,8 @@ import (
 
 type LogsScreen struct {
 	selected int
+	width    int
+	height   int
 	onBack   func() tea.Cmd
 }
 
@@ -19,9 +21,17 @@ func NewLogsScreen(onBack func() tea.Cmd) LogsScreen {
 	}
 }
 
+func (s *LogsScreen) SetSize(width, height int) {
+	s.width = width
+	s.height = height
+}
+
 func (s LogsScreen) Update(msg tea.Msg) (LogsScreen, tea.Cmd) {
 	records := globalHistory.All()
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		s.SetSize(msg.Width, msg.Height)
+		return s, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
@@ -97,5 +107,5 @@ func (s LogsScreen) View() string {
 	}
 
 	b.WriteString(styleHelp.Render("↑/k, ↓/j: Scroll history • Esc: Back"))
-	return styleBox.Render(b.String())
+	return RenderBox(b.String(), s.width)
 }
