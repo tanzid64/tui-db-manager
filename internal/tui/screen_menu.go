@@ -80,6 +80,6 @@ func (m MenuScreen) View() string {
 		b.WriteString(fmt.Sprintf("    %s\n\n", styleHelp.Render(it.Desc)))
 	}
 
-	b.WriteString(styleHelp.Render("↑/k, ↓/j: Navigate • Enter: Select • q: Quit"))
+	b.WriteString(styleHelp.Render("↑/k, ↓/j: Navigate • Enter: Select • u: Updates • q: Quit"))
 	return styleBox.Render(b.String())
 }

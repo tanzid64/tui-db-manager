@@ -287,7 +287,6 @@ func (s *Service) ListDatabases(ctx context.Context, engine string, conn config.
 	return db.ListDatabases(ctx, engine, c)
 }
 
-
 func (s *Service) RunBackup(ctx context.Context, jobName string) (RunRecord, error) {
 	start := time.Now()
 	rec := RunRecord{

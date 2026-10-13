@@ -37,5 +37,6 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newSecretCmd())
 	root.AddCommand(newScheduleCmd())
 	root.AddCommand(newConfigCmd())
+	root.AddCommand(newUpdateCmd())
 	return root
 }

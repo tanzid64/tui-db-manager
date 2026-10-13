@@ -12,6 +12,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
+	"github.com/tanzid64/tui-db-manager/internal/update"
+	"strings"
 )
 
 func TestWizardNavigationAndCollection(t *testing.T) {
@@ -493,7 +495,6 @@ func TestJobsScreenWizardLiveDatabaseSelection(t *testing.T) {
 	}
 }
 
-
 func TestStorageScreenDynamicWizard(t *testing.T) {
 	dir := t.TempDir()
 	svc, err := NewService(dir, "")
@@ -641,4 +642,74 @@ func TestStorageScreenDynamicWizard(t *testing.T) {
 	}
 }
 
+func TestAppUpdateFlow(t *testing.T) {
+	tmpDir := t.TempDir()
+	svc, err := NewService(tmpDir, "")
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
 
+	app := NewApp(svc)
+	app.currentScreen = screenMainMenu
+
+	// 1. Send updateCheckMsg with a newer release
+	rel := &update.Release{
+		TagName: "v9.9.9",
+		Body:    "Major new features and improvements",
+		HTMLURL: "https://github.com/tanzid64/tui-db-manager/releases/tag/v9.9.9",
+	}
+
+	model, _ := app.Update(updateCheckMsg{
+		rel:   rel,
+		err:   nil,
+		force: false,
+	})
+	app = model.(*App)
+
+	if !app.showUpdateModal {
+		t.Fatalf("expected showUpdateModal to be true")
+	}
+	if app.modalSelected != 0 {
+		t.Fatalf("expected modalSelected to be 0 (Update Now), got %d", app.modalSelected)
+	}
+
+	// View should render modal
+	view := app.View()
+	if !strings.Contains(view, "Software Update Available") || !strings.Contains(view, "v9.9.9") {
+		t.Fatalf("expected view to render update modal with v9.9.9, got:\n%s", view)
+	}
+
+	// 2. Toggle selection to 'Remind Me Later' using Tab
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyTab})
+	app = model.(*App)
+	if app.modalSelected != 1 {
+		t.Fatalf("expected modalSelected to be 1, got %d", app.modalSelected)
+	}
+
+	// 3. Press Enter on 'Remind Me Later' -> dismisses modal
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(*App)
+	if app.showUpdateModal {
+		t.Fatalf("expected showUpdateModal to be false after selecting Remind Me Later")
+	}
+
+	// Header should still indicate update is available and 'u' hotkey
+	view = app.View()
+	if !strings.Contains(view, "Update Available (v9.9.9, press 'u')") {
+		t.Fatalf("expected header to show update banner, got:\n%s", view)
+	}
+
+	// 4. Press 'u' on main menu -> re-opens modal
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	app = model.(*App)
+	if !app.showUpdateModal {
+		t.Fatalf("expected pressing 'u' on main menu to re-open update modal")
+	}
+
+	// 5. Press Esc -> dismisses modal
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	app = model.(*App)
+	if app.showUpdateModal {
+		t.Fatalf("expected esc to dismiss modal")
+	}
+}

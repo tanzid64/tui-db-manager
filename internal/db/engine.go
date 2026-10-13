@@ -35,4 +35,3 @@ type Engine interface {
 type DatabaseLister interface {
 	ListDatabases(ctx context.Context, c Conn) ([]string, error)
 }
-

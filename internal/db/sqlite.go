@@ -51,4 +51,3 @@ func (e sqliteEngine) Restore(ctx context.Context, c Conn, r io.Reader) error {
 func (e sqliteEngine) ListDatabases(ctx context.Context, c Conn) ([]string, error) {
 	return nil, nil
 }
-

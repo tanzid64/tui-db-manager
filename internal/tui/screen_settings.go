@@ -15,23 +15,26 @@ const (
 	optScheduleRemove
 	optExportConfig
 	optImportConfig
+	optCheckUpdate
 )
 
 type SettingsScreen struct {
-	svc          *Service
-	selected     int
-	statusMsg    string
-	isWizardOpen bool
-	activeOpt    SettingsOption
-	wizard       WizardModel
-	onBack       func() tea.Cmd
+	svc           *Service
+	selected      int
+	statusMsg     string
+	isWizardOpen  bool
+	activeOpt     SettingsOption
+	wizard        WizardModel
+	onBack        func() tea.Cmd
+	onCheckUpdate func() tea.Cmd
 }
 
-func NewSettingsScreen(svc *Service, onBack func() tea.Cmd) SettingsScreen {
+func NewSettingsScreen(svc *Service, onBack func() tea.Cmd, onCheckUpdate func() tea.Cmd) SettingsScreen {
 	return SettingsScreen{
-		svc:      svc,
-		selected: 0,
-		onBack:   onBack,
+		svc:           svc,
+		selected:      0,
+		onBack:        onBack,
+		onCheckUpdate: onCheckUpdate,
 	}
 }
 
@@ -50,7 +53,7 @@ func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		optionsCount := 5
+		optionsCount := 6
 		switch msg.String() {
 		case "esc":
 			if s.onBack != nil {
@@ -69,14 +72,14 @@ func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
 				s.selected = 0
 			}
 		case "enter":
-			s.triggerOption(SettingsOption(s.selected))
-			return s, nil
+			cmd := s.triggerOption(SettingsOption(s.selected))
+			return s, cmd
 		}
 	}
 	return s, nil
 }
 
-func (s *SettingsScreen) triggerOption(opt SettingsOption) {
+func (s *SettingsScreen) triggerOption(opt SettingsOption) tea.Cmd {
 	s.activeOpt = opt
 	switch opt {
 	case optChangePassphrase:
@@ -89,7 +92,12 @@ func (s *SettingsScreen) triggerOption(opt SettingsOption) {
 		s.openExportWizard()
 	case optImportConfig:
 		s.openImportWizard()
+	case optCheckUpdate:
+		if s.onCheckUpdate != nil {
+			return s.onCheckUpdate()
+		}
 	}
+	return nil
 }
 
 func (s *SettingsScreen) openChangePassphraseWizard() {
@@ -280,6 +288,7 @@ func (s SettingsScreen) View() string {
 		{"Remove Automated Job Schedule", "Unregister scheduled timer from OS scheduler"},
 		{"Export Configuration Bundle", "Export portable YAML/JSON config bundle with optional transfer-passphrase secrets"},
 		{"Import Configuration Bundle", "Merge external configuration bundle and re-encrypt secrets into local vault"},
+		{"Check for Software Updates", "Check for newer releases of dbk on GitHub and upgrade in-place"},
 	}
 
 	for i, opt := range options {
@@ -298,4 +307,8 @@ func (s SettingsScreen) View() string {
 
 	b.WriteString(styleHelp.Render("↑/k, ↓/j: Navigate • Enter: Open • Esc: Back"))
 	return styleBox.Render(b.String())
+}
+
+func (s *SettingsScreen) SetStatusMsg(msg string) {
+	s.statusMsg = msg
 }
