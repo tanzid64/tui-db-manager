@@ -32,6 +32,12 @@ jobs:
           default_bump: patch
           release_branches: main
 
+      # github-tag-action creates the tag via the GitHub API, so it is not in
+      # the workspace yet. Fetch it so GoReleaser sees the tag on HEAD.
+      - name: Sync tags
+        if: steps.tag.outputs.new_tag != ''
+        run: git fetch --force --tags
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
