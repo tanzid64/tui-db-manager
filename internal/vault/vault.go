@@ -139,3 +139,11 @@ func (s *Store) Save() error {
 	}
 	return os.Rename(tmp, s.path)
 }
+
+// ChangePassphrase derives a new encryption key with fresh KDF params and re-saves the store.
+func (s *Store) ChangePassphrase(newPassphrase string) error {
+	p := DefaultKDFParams()
+	s.key = DeriveKey(newPassphrase, p)
+	s.params = p
+	return s.Save()
+}

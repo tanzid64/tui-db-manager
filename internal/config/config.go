@@ -99,6 +99,12 @@ type NotifierConfig struct {
 
 func fileName(dir string) string { return filepath.Join(dir, "config.yaml") }
 
+// Exists reports whether config.yaml exists in dir.
+func Exists(dir string) bool {
+	_, err := os.Stat(fileName(dir))
+	return err == nil
+}
+
 func Load(dir string) (*Config, error) {
 	b, err := os.ReadFile(fileName(dir))
 	if errors.Is(err, fs.ErrNotExist) {

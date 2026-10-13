@@ -1,0 +1,296 @@
+package tui
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/tanzid64/tui-db-manager/internal/config"
+)
+
+func TestWizardNavigationAndCollection(t *testing.T) {
+	steps := []WizardStep{
+		{
+			Title: "Step 1",
+			Fields: []WizardField{
+				{Key: "name", Label: "Name", Type: FieldText},
+				{Key: "mode", Label: "Mode", Type: FieldSelect, Options: []string{"fast", "safe"}},
+			},
+		},
+		{
+			Title: "Step 2",
+			Fields: []WizardField{
+				{Key: "enabled", Label: "Enabled", Type: FieldCheckbox, Checked: false},
+			},
+		},
+	}
+
+	finished := false
+	var finalVals map[string]string
+
+	w := NewWizard(
+		"Test Wizard",
+		steps,
+		func(vals map[string]string) tea.Cmd {
+			finished = true
+			finalVals = vals
+			return nil
+		},
+		func() tea.Cmd {
+			return nil
+		},
+	)
+
+	// Step 1 Field 0 (name text input)
+	w, _ = w.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("mydb")})
+	// Press Tab/Down to move to Field 1 (mode select)
+	w, _ = w.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if w.ActiveField != 1 {
+		t.Fatalf("expected active field 1, got %d", w.ActiveField)
+	}
+
+	// Press Right to toggle option
+	w, _ = w.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if w.Steps[0].Fields[1].SelectedOpt != 1 {
+		t.Fatalf("expected selected opt 1 (safe), got %d", w.Steps[0].Fields[1].SelectedOpt)
+	}
+
+	// Press Enter to complete Step 1 and advance to Step 2
+	w, _ = w.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if w.ActiveStep != 1 {
+		t.Fatalf("expected active step 1, got %d", w.ActiveStep)
+	}
+
+	// In Step 2: toggle checkbox with space
+	w, _ = w.Update(tea.KeyMsg{Type: tea.KeySpace})
+	if !w.Steps[1].Fields[0].Checked {
+		t.Fatalf("expected checkbox checked")
+	}
+
+	// Press Enter to submit final step
+	w, _ = w.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !finished {
+		t.Fatalf("expected wizard to finish")
+	}
+	if finalVals["name"] != "mydb" {
+		t.Fatalf("expected name 'mydb', got %q", finalVals["name"])
+	}
+	if finalVals["mode"] != "safe" {
+		t.Fatalf("expected mode 'safe', got %q", finalVals["mode"])
+	}
+	if finalVals["enabled"] != "true" {
+		t.Fatalf("expected enabled 'true', got %q", finalVals["enabled"])
+	}
+}
+
+func TestWizardValidation(t *testing.T) {
+	steps := []WizardStep{
+		{
+			Title: "Step 1",
+			Fields: []WizardField{
+				{Key: "name", Label: "Name", Type: FieldText},
+			},
+		},
+		{
+			Title: "Step 2",
+			Fields: []WizardField{
+				{Key: "other", Label: "Other", Type: FieldText},
+			},
+		},
+	}
+
+	w := NewWizard("Validate Wizard", steps, nil, nil)
+	w.ValidateStep = func(stepIndex int, values map[string]string) error {
+		if stepIndex == 0 && values["name"] == "" {
+			return errors.New("name cannot be empty")
+		}
+		return nil
+	}
+
+	// Press Enter without entering name
+	w, _ = w.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if w.ActiveStep != 0 {
+		t.Fatalf("expected to stay on step 0 due to validation error")
+	}
+	if w.ErrMessage != "name cannot be empty" {
+		t.Fatalf("expected error message 'name cannot be empty', got %q", w.ErrMessage)
+	}
+
+	// Fill name and press Enter
+	w, _ = w.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("valid-name")})
+	w, _ = w.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if w.ActiveStep != 1 {
+		t.Fatalf("expected advance to step 1 after valid input")
+	}
+	if w.ErrMessage != "" {
+		t.Fatalf("expected error message to be cleared, got %q", w.ErrMessage)
+	}
+}
+
+func TestHistoryStore(t *testing.T) {
+	h := &HistoryStore{}
+	now := time.Now()
+
+	h.Add(RunRecord{
+		ID:       "run-1",
+		Job:      "job-a",
+		Action:   "backup",
+		Status:   StatusSuccess,
+		Started:  now.Add(-10 * time.Minute),
+		Duration: 5 * time.Second,
+	})
+	h.Add(RunRecord{
+		ID:       "run-2",
+		Job:      "job-a",
+		Action:   "backup",
+		Status:   StatusFailed,
+		Started:  now,
+		Duration: 2 * time.Second,
+		Error:    "connection refused",
+	})
+
+	all := h.All()
+	if len(all) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(all))
+	}
+	// Recent first
+	if all[0].ID != "run-2" {
+		t.Fatalf("expected newest record first, got %s", all[0].ID)
+	}
+
+	last := h.LastForJob("job-a")
+	if last == nil || last.ID != "run-2" {
+		t.Fatalf("expected last run for job-a to be run-2")
+	}
+
+	lastB := h.LastForJob("job-nonexistent")
+	if lastB != nil {
+		t.Fatalf("expected nil for nonexistent job")
+	}
+}
+
+func TestAppNavigationLifecycle(t *testing.T) {
+	dir := t.TempDir()
+
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	// Initially no vault: starts on screenUnlock
+	app := NewApp(svc)
+	if app.currentScreen != screenUnlock {
+		t.Fatalf("expected screenUnlock on initial launch without vault, got %d", app.currentScreen)
+	}
+
+	// Check UnlockScreen view
+	view := app.View()
+	if view == "" {
+		t.Fatalf("expected non-empty view")
+	}
+
+	// Create vault via unlock screen
+	app.unlockScreen.input.SetValue("test-passphrase-123")
+	app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if app.currentScreen != screenMainMenu {
+		t.Fatalf("expected transition to screenMainMenu after unlocking, got %d", app.currentScreen)
+	}
+
+	// Navigate to Jobs screen (menu item 0)
+	app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if app.currentScreen != screenJobs {
+		t.Fatalf("expected screenJobs, got %d", app.currentScreen)
+	}
+
+	// Press Esc to return to main menu
+	app.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if app.currentScreen != screenMainMenu {
+		t.Fatalf("expected screenMainMenu after Esc, got %d", app.currentScreen)
+	}
+
+	// Down to Storage (item 1) and enter
+	app.Update(tea.KeyMsg{Type: tea.KeyDown})
+	app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if app.currentScreen != screenStorage {
+		t.Fatalf("expected screenStorage, got %d", app.currentScreen)
+	}
+
+	// Esc back to menu
+	app.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if app.currentScreen != screenMainMenu {
+		t.Fatalf("expected screenMainMenu, got %d", app.currentScreen)
+	}
+
+	// Change passphrase via service
+	if err := svc.ChangePassphrase("new-passphrase-456"); err != nil {
+		t.Fatalf("ChangePassphrase: %v", err)
+	}
+
+	// Verify we can re-open vault with new passphrase
+	svc2, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("NewService 2: %v", err)
+	}
+	if err := svc2.UnlockVault("new-passphrase-456"); err != nil {
+		t.Fatalf("UnlockVault with new pass failed: %v", err)
+	}
+}
+
+func TestTUIServiceConfigAndBundle(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	if err := svc.CreateVault("vault-pass"); err != nil {
+		t.Fatalf("CreateVault: %v", err)
+	}
+
+	svc.Cfg.Jobs = []config.Job{
+		{
+			Name:      "test-job",
+			Engine:    "sqlite",
+			Storage:   "local",
+			Conn:      config.Conn{Path: "/tmp/test.db"},
+			Retention: config.Retention{KeepLast: 3},
+		},
+	}
+	if err := svc.SaveConfig(); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	// Export bundle
+	exportFile := filepath.Join(dir, "export.yaml")
+	if err := svc.ExportBundle(exportFile, "transfer-pass", true); err != nil {
+		t.Fatalf("ExportBundle: %v", err)
+	}
+	if _, err := os.Stat(exportFile); err != nil {
+		t.Fatalf("Export file not found: %v", err)
+	}
+
+	// Import bundle into new dir
+	importDir := t.TempDir()
+	importSvc, err := NewService(importDir, "")
+	if err != nil {
+		t.Fatalf("NewService import: %v", err)
+	}
+	if err := importSvc.CreateVault("import-vault-pass"); err != nil {
+		t.Fatalf("CreateVault import: %v", err)
+	}
+
+	res, err := importSvc.ImportBundle(exportFile, "transfer-pass", true)
+	if err != nil {
+		t.Fatalf("ImportBundle: %v", err)
+	}
+	if res.ConfigResult.JobsAdded != 1 {
+		t.Fatalf("expected 1 job added, got %d", res.ConfigResult.JobsAdded)
+	}
+	if len(importSvc.Cfg.Jobs) != 1 || importSvc.Cfg.Jobs[0].Name != "test-job" {
+		t.Fatalf("expected job 'test-job' imported")
+	}
+}

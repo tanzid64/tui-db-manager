@@ -1,6 +1,12 @@
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"os"
+
+	"github.com/spf13/cobra"
+	"github.com/tanzid64/tui-db-manager/internal/tui"
+	"golang.org/x/term"
+)
 
 // NewRootCmd builds the dbk command tree.
 func NewRootCmd() *cobra.Command {
@@ -9,6 +15,14 @@ func NewRootCmd() *cobra.Command {
 		Short:         "Secure database backup CLI/TUI",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !term.IsTerminal(int(os.Stdout.Fd())) {
+				return cmd.Help()
+			}
+			cfgDir, _ := cmd.Flags().GetString("config")
+			passFile, _ := cmd.Flags().GetString("passphrase-file")
+			return tui.Run(cfgDir, passFile)
+		},
 	}
 	root.PersistentFlags().String("config", "", "config directory (default: OS config dir + /dbk)")
 	root.PersistentFlags().String("passphrase-file", "", "file containing the vault passphrase")
