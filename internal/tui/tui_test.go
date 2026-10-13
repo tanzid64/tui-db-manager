@@ -376,3 +376,151 @@ func TestJobsScreenWizardEnterCompletion(t *testing.T) {
 	}
 }
 
+func TestStorageScreenDynamicWizard(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	if err := svc.CreateVault("vault-pass"); err != nil {
+		t.Fatalf("CreateVault: %v", err)
+	}
+
+	screen := NewStorageScreen(svc, nil)
+
+	// --- 1. Test Local storage creation (Step 2 should only have 1 field: path) ---
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if !screen.isWizardOpen {
+		t.Fatalf("expected storage wizard to be open")
+	}
+
+	// Step 0: Name (field 0) -> "my-local"
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("my-local")})
+	// Press Enter to move to Field 1 (type select)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveField != 1 {
+		t.Fatalf("expected active field 1, got %d", screen.wizard.ActiveField)
+	}
+	// Option 0 is "local", Option 1 is "gdrive", Option 2 is "s3"
+	if screen.wizard.Steps[0].Fields[1].Options[0] != "local" {
+		t.Fatalf("expected option 0 to be local, got %s", screen.wizard.Steps[0].Fields[1].Options[0])
+	}
+	if screen.wizard.Steps[0].Fields[1].Options[1] != "gdrive" {
+		t.Fatalf("expected option 1 to be gdrive, got %s", screen.wizard.Steps[0].Fields[1].Options[1])
+	}
+	if screen.wizard.Steps[0].Fields[1].Options[2] != "s3" {
+		t.Fatalf("expected option 2 to be s3, got %s", screen.wizard.Steps[0].Fields[1].Options[2])
+	}
+
+	// Press Enter on Field 1 to advance to Step 1
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveStep != 1 {
+		t.Fatalf("expected active step 1, got %d", screen.wizard.ActiveStep)
+	}
+	// Verify Step 1 for "local" has ONLY 1 field!
+	if len(screen.wizard.Steps[1].Fields) != 1 {
+		t.Fatalf("expected exactly 1 field for local storage, got %d", len(screen.wizard.Steps[1].Fields))
+	}
+	if screen.wizard.Steps[1].Fields[0].Key != "path" {
+		t.Fatalf("expected field key 'path', got %s", screen.wizard.Steps[1].Fields[0].Key)
+	}
+
+	// Enter local path
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/var/backups")})
+	// Press Enter on path (final field of final step) -> should finish!
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Verify wizard finishes and storage is saved
+	if screen.isWizardOpen {
+		t.Fatalf("expected wizard to close after Enter on local path")
+	}
+	if len(svc.Cfg.Storages) != 1 {
+		t.Fatalf("expected 1 storage saved, got %d", len(svc.Cfg.Storages))
+	}
+	st := svc.Cfg.Storages[0]
+	if st.Name != "my-local" || st.Type != "local" || st.Path != "/var/backups" {
+		t.Fatalf("unexpected storage config: %+v", st)
+	}
+
+	// --- 2. Test GDrive storage creation (Step 2 should only have 2 fields: folder_id & credentials) ---
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("my-gdrive")})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter}) // to type select
+	// Right arrow to select gdrive (option 1)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if screen.wizard.Steps[0].Fields[1].SelectedOpt != 1 {
+		t.Fatalf("expected selected opt 1 for gdrive")
+	}
+	// Press Enter to advance to Step 1
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if len(screen.wizard.Steps[1].Fields) != 2 {
+		t.Fatalf("expected exactly 2 fields for gdrive storage, got %d", len(screen.wizard.Steps[1].Fields))
+	}
+	if screen.wizard.Steps[1].Fields[0].Key != "folder_id" || screen.wizard.Steps[1].Fields[1].Key != "credentials" {
+		t.Fatalf("unexpected fields for gdrive: %+v", screen.wizard.Steps[1].Fields)
+	}
+
+	// Enter folder_id
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("folder123")})
+	// Enter moves to credentials
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveField != 1 {
+		t.Fatalf("expected active field 1, got %d", screen.wizard.ActiveField)
+	}
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("{\"dummy\":\"json\"}")})
+	// Enter on credentials (final field) finishes!
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.isWizardOpen {
+		t.Fatalf("expected wizard to close after Enter on gdrive credentials")
+	}
+	if len(svc.Cfg.Storages) != 2 {
+		t.Fatalf("expected 2 storages saved, got %d", len(svc.Cfg.Storages))
+	}
+	gSt := svc.Cfg.Storages[1]
+	if gSt.Name != "my-gdrive" || gSt.Type != "gdrive" || gSt.FolderID != "folder123" {
+		t.Fatalf("unexpected gdrive storage config: %+v", gSt)
+	}
+
+	// --- 3. Test S3 storage creation (Step 2 should only have 5 fields) ---
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("my-s3")})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter}) // to type select
+	// Right arrow to select s3 (option 2)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if screen.wizard.Steps[0].Fields[1].SelectedOpt != 2 {
+		t.Fatalf("expected selected opt 2 for s3")
+	}
+	// Press Enter to advance to Step 1
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if len(screen.wizard.Steps[1].Fields) != 5 {
+		t.Fatalf("expected exactly 5 fields for s3 storage, got %d", len(screen.wizard.Steps[1].Fields))
+	}
+	// Fill bucket
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("test-bucket")})
+	// Enter to region
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("us-west-2")})
+	// Enter to endpoint (optional, skip)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Enter to access_key
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("AKIA123")})
+	// Enter to secret_key
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("secret456")})
+	// Enter on secret_key finishes!
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.isWizardOpen {
+		t.Fatalf("expected wizard to close after Enter on s3 secret_key")
+	}
+	if len(svc.Cfg.Storages) != 3 {
+		t.Fatalf("expected 3 storages saved, got %d", len(svc.Cfg.Storages))
+	}
+	s3St := svc.Cfg.Storages[2]
+	if s3St.Name != "my-s3" || s3St.Type != "s3" || s3St.Bucket != "test-bucket" || s3St.Region != "us-west-2" || s3St.AccessKeyID != "AKIA123" {
+		t.Fatalf("unexpected s3 storage config: %+v", s3St)
+	}
+}
+
+

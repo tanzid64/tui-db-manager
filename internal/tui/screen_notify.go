@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -116,7 +117,7 @@ func (s *NotifyScreen) openAddNotifierWizard() {
 			Title:       "Notifier Type",
 			Description: "Set a unique name and select the notification channel type",
 			Fields: []WizardField{
-				{Key: "name", Label: "Channel Name", Placeholder: "alerts-telegram", Type: FieldText},
+				{Key: "name", Label: "Channel Name", Placeholder: "alerts-channel", Type: FieldText},
 				{Key: "type", Label: "Channel Type", Type: FieldSelect, Options: []string{"telegram", "email", "webhook"}},
 			},
 		},
@@ -124,30 +125,82 @@ func (s *NotifyScreen) openAddNotifierWizard() {
 			Title:       "Channel Parameters",
 			Description: "Fill in the parameters for your chosen notification channel",
 			Fields: []WizardField{
-				// Telegram
-				{Key: "bot_token", Label: "Bot Token (Telegram, Vault)", Placeholder: "123456:ABC-DEF...", Type: FieldText, IsSecret: true},
-				{Key: "chat_id", Label: "Chat ID (Telegram)", Placeholder: "-10012345678", Type: FieldText},
-				// Email
-				{Key: "host", Label: "SMTP Host (Email)", Placeholder: "smtp.mailgun.org", Type: FieldText},
-				{Key: "port", Label: "SMTP Port (Email)", Placeholder: "587", Type: FieldText},
-				{Key: "from", Label: "From Address (Email)", Placeholder: "backups@example.com", Type: FieldText},
-				{Key: "to", Label: "To Address (Email)", Placeholder: "ops@example.com", Type: FieldText},
-				{Key: "username", Label: "SMTP Username (Email)", Placeholder: "user@example.com", Type: FieldText},
-				{Key: "password", Label: "SMTP Password (Email, Vault)", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
-				{Key: "tls", Label: "Implicit TLS (Email, Port 465)", Type: FieldCheckbox, Checked: false},
-				// Webhook
-				{Key: "url", Label: "Webhook URL", Placeholder: "https://example.com/webhook", Type: FieldText},
-				{Key: "token", Label: "Signing Token / Secret (Webhook, Vault)", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
+				{Key: "bot_token", Label: "Bot Token (Vault)", Placeholder: "123456:ABC-DEF...", Type: FieldText, IsSecret: true},
+				{Key: "chat_id", Label: "Chat ID", Placeholder: "-10012345678", Type: FieldText},
 			},
 		},
 	}
 
-	s.wizard = NewWizard(
+	w := NewWizard(
 		"Add Notification Channel",
 		steps,
 		nil,
 		nil,
 	)
+
+	w.OnStepAdvance = func(wiz *WizardModel, currentStep int) {
+		if currentStep == 0 {
+			vals := wiz.CollectValues()
+			nType := strings.ToLower(strings.TrimSpace(vals["type"]))
+			var fields []WizardField
+			switch nType {
+			case "email":
+				fields = []WizardField{
+					{Key: "host", Label: "SMTP Host", Placeholder: "smtp.mailgun.org", Type: FieldText},
+					{Key: "port", Label: "SMTP Port", Placeholder: "587", Type: FieldText},
+					{Key: "from", Label: "From Address", Placeholder: "backups@example.com", Type: FieldText},
+					{Key: "to", Label: "To Address", Placeholder: "ops@example.com", Type: FieldText},
+					{Key: "username", Label: "SMTP Username", Placeholder: "user@example.com", Type: FieldText},
+					{Key: "password", Label: "SMTP Password (Vault)", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
+					{Key: "tls", Label: "Implicit TLS (Port 465)", Type: FieldCheckbox, Checked: false},
+				}
+			case "webhook":
+				fields = []WizardField{
+					{Key: "url", Label: "Webhook URL", Placeholder: "https://example.com/webhook", Type: FieldText},
+					{Key: "token", Label: "Signing Token / Secret (Vault)", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
+				}
+			default: // "telegram"
+				fields = []WizardField{
+					{Key: "bot_token", Label: "Bot Token (Vault)", Placeholder: "123456:ABC-DEF...", Type: FieldText, IsSecret: true},
+					{Key: "chat_id", Label: "Chat ID", Placeholder: "-10012345678", Type: FieldText},
+				}
+			}
+			wiz.SetStepFields(1, fields)
+		}
+	}
+
+	w.ValidateStep = func(stepIndex int, vals map[string]string) error {
+		if stepIndex == 0 {
+			name := strings.TrimSpace(vals["name"])
+			if name == "" {
+				return errors.New("channel name cannot be empty")
+			}
+			for _, existing := range s.svc.Cfg.Notifiers {
+				if existing.Name == name {
+					return fmt.Errorf("notification channel %q already exists", name)
+				}
+			}
+		} else if stepIndex == 1 {
+			nType := strings.ToLower(strings.TrimSpace(vals["type"]))
+			switch nType {
+			case "telegram":
+				if strings.TrimSpace(vals["chat_id"]) == "" {
+					return errors.New("chat ID cannot be empty")
+				}
+			case "email":
+				if strings.TrimSpace(vals["host"]) == "" || strings.TrimSpace(vals["from"]) == "" || strings.TrimSpace(vals["to"]) == "" {
+					return errors.New("host, from, and to addresses are required")
+				}
+			case "webhook":
+				if strings.TrimSpace(vals["url"]) == "" {
+					return errors.New("webhook URL cannot be empty")
+				}
+			}
+		}
+		return nil
+	}
+
+	s.wizard = w
 	s.isWizardOpen = true
 }
 

@@ -35,33 +35,49 @@ type WizardStep struct {
 }
 
 type WizardModel struct {
-	Title        string
-	Steps        []WizardStep
-	ActiveStep   int
-	ActiveField  int
-	ErrMessage   string
-	Done         bool
-	Canceled     bool
-	Values       map[string]string
-	OnFinish     func(values map[string]string) tea.Cmd
-	OnCancel     func() tea.Cmd
-	ValidateStep func(stepIndex int, values map[string]string) error
+	Title         string
+	Steps         []WizardStep
+	ActiveStep    int
+	ActiveField   int
+	ErrMessage    string
+	Done          bool
+	Canceled      bool
+	Values        map[string]string
+	OnFinish      func(values map[string]string) tea.Cmd
+	OnCancel      func() tea.Cmd
+	ValidateStep  func(stepIndex int, values map[string]string) error
+	OnStepAdvance func(w *WizardModel, currentStep int)
+}
+
+// InitFields initializes textinput.Models for text fields.
+func InitFields(fields []WizardField) []WizardField {
+	for fIdx := range fields {
+		f := &fields[fIdx]
+		if f.Type == FieldText {
+			ti := textinput.New()
+			ti.Placeholder = f.Placeholder
+			if f.IsSecret {
+				ti.EchoMode = textinput.EchoPassword
+				ti.EchoCharacter = '•'
+			}
+			f.Input = ti
+		}
+	}
+	return fields
+}
+
+// SetStepFields updates the fields for the specified step and initializes them.
+func (w *WizardModel) SetStepFields(stepIndex int, fields []WizardField) {
+	if stepIndex < 0 || stepIndex >= len(w.Steps) {
+		return
+	}
+	InitFields(fields)
+	w.Steps[stepIndex].Fields = fields
 }
 
 func NewWizard(title string, steps []WizardStep, onFinish func(map[string]string) tea.Cmd, onCancel func() tea.Cmd) WizardModel {
 	for sIdx := range steps {
-		for fIdx := range steps[sIdx].Fields {
-			f := &steps[sIdx].Fields[fIdx]
-			if f.Type == FieldText {
-				ti := textinput.New()
-				ti.Placeholder = f.Placeholder
-				if f.IsSecret {
-					ti.EchoMode = textinput.EchoPassword
-					ti.EchoCharacter = '•'
-				}
-				f.Input = ti
-			}
-		}
+		InitFields(steps[sIdx].Fields)
 	}
 	w := WizardModel{
 		Title:       title,
@@ -80,6 +96,9 @@ func (w *WizardModel) focusActiveField() {
 		return
 	}
 	step := &w.Steps[w.ActiveStep]
+	if w.ActiveField >= len(step.Fields) {
+		w.ActiveField = 0
+	}
 	for i := range step.Fields {
 		if i == w.ActiveField && step.Fields[i].Type == FieldText {
 			step.Fields[i].Input.Focus()
@@ -168,6 +187,9 @@ func (w *WizardModel) Update(msg tea.Msg) (WizardModel, tea.Cmd) {
 			w.ErrMessage = ""
 			// Last field of the step: advance step or finish
 			if w.ActiveStep < len(w.Steps)-1 {
+				if w.OnStepAdvance != nil {
+					w.OnStepAdvance(w, w.ActiveStep)
+				}
 				w.ActiveStep++
 				w.ActiveField = 0
 				w.focusActiveField()

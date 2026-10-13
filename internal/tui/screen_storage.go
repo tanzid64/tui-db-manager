@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -115,32 +116,86 @@ func (s *StorageScreen) openAddStorageWizard() {
 			Title:       "Backend Type",
 			Description: "Set a unique name and pick the storage driver",
 			Fields: []WizardField{
-				{Key: "name", Label: "Storage Name", Placeholder: "backup-s3", Type: FieldText},
-				{Key: "type", Label: "Backend Type", Type: FieldSelect, Options: []string{"local", "s3", "gdrive"}},
+				{Key: "name", Label: "Storage Name", Placeholder: "backup-data", Type: FieldText},
+				{Key: "type", Label: "Backend Type", Type: FieldSelect, Options: []string{"local", "gdrive", "s3"}},
 			},
 		},
 		{
 			Title:       "Storage Parameters",
 			Description: "Fill in the required fields for the chosen backend type",
 			Fields: []WizardField{
-				{Key: "path", Label: "Local Path (for local)", Placeholder: "/var/backups", Type: FieldText},
-				{Key: "bucket", Label: "Bucket (for S3)", Placeholder: "my-backups", Type: FieldText},
-				{Key: "region", Label: "Region (for S3)", Placeholder: "us-east-1", Type: FieldText},
-				{Key: "endpoint", Label: "Endpoint (optional S3)", Placeholder: "https://r2.cloudflarestorage.com", Type: FieldText},
-				{Key: "access_key", Label: "Access Key ID (S3)", Placeholder: "AKIA...", Type: FieldText},
-				{Key: "secret_key", Label: "Secret Key (S3, Vault)", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
-				{Key: "folder_id", Label: "Folder ID (for GDrive)", Placeholder: "1A2B3C...", Type: FieldText},
-				{Key: "credentials", Label: "Service Account JSON (GDrive, Vault)", Placeholder: "{\"type\": ...}", Type: FieldText, IsSecret: true},
+				{Key: "path", Label: "Local Directory Path", Placeholder: "/var/backups", Type: FieldText},
 			},
 		},
 	}
 
-	s.wizard = NewWizard(
+	w := NewWizard(
 		"Add Storage Destination",
 		steps,
 		nil,
 		nil,
 	)
+
+	w.OnStepAdvance = func(wiz *WizardModel, currentStep int) {
+		if currentStep == 0 {
+			vals := wiz.CollectValues()
+			stType := strings.ToLower(strings.TrimSpace(vals["type"]))
+			var fields []WizardField
+			switch stType {
+			case "gdrive":
+				fields = []WizardField{
+					{Key: "folder_id", Label: "Google Drive Folder ID", Placeholder: "1A2B3C4D5E...", Type: FieldText},
+					{Key: "credentials", Label: "Service Account JSON (Vault)", Placeholder: "{\"type\": \"service_account\", ...}", Type: FieldText, IsSecret: true},
+				}
+			case "s3":
+				fields = []WizardField{
+					{Key: "bucket", Label: "S3 Bucket Name", Placeholder: "my-backups", Type: FieldText},
+					{Key: "region", Label: "Region", Placeholder: "us-east-1", Type: FieldText},
+					{Key: "endpoint", Label: "Endpoint URL (optional)", Placeholder: "https://r2.cloudflarestorage.com", Type: FieldText},
+					{Key: "access_key", Label: "Access Key ID", Placeholder: "AKIA...", Type: FieldText},
+					{Key: "secret_key", Label: "Secret Key (Vault)", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
+				}
+			default: // "local"
+				fields = []WizardField{
+					{Key: "path", Label: "Local Directory Path", Placeholder: "/var/backups", Type: FieldText},
+				}
+			}
+			wiz.SetStepFields(1, fields)
+		}
+	}
+
+	w.ValidateStep = func(stepIndex int, vals map[string]string) error {
+		if stepIndex == 0 {
+			name := strings.TrimSpace(vals["name"])
+			if name == "" {
+				return errors.New("storage name cannot be empty")
+			}
+			for _, existing := range s.svc.Cfg.Storages {
+				if existing.Name == name {
+					return fmt.Errorf("storage backend %q already exists", name)
+				}
+			}
+		} else if stepIndex == 1 {
+			stType := strings.ToLower(strings.TrimSpace(vals["type"]))
+			switch stType {
+			case "gdrive":
+				if strings.TrimSpace(vals["folder_id"]) == "" {
+					return errors.New("Google Drive folder ID cannot be empty")
+				}
+			case "s3":
+				if strings.TrimSpace(vals["bucket"]) == "" {
+					return errors.New("S3 bucket name cannot be empty")
+				}
+			default: // "local"
+				if strings.TrimSpace(vals["path"]) == "" {
+					return errors.New("local directory path cannot be empty")
+				}
+			}
+		}
+		return nil
+	}
+
+	s.wizard = w
 	s.isWizardOpen = true
 }
 
@@ -151,7 +206,7 @@ func (s *StorageScreen) handleStorageWizardFinish(vals map[string]string) {
 		return
 	}
 
-	stType := vals["type"]
+	stType := strings.ToLower(strings.TrimSpace(vals["type"]))
 	sc := config.StorageConfig{
 		Name: name,
 		Type: stType,
@@ -159,19 +214,19 @@ func (s *StorageScreen) handleStorageWizardFinish(vals map[string]string) {
 
 	switch stType {
 	case "local":
-		sc.Path = vals["path"]
+		sc.Path = strings.TrimSpace(vals["path"])
 	case "s3":
-		sc.Bucket = vals["bucket"]
-		sc.Region = vals["region"]
-		sc.Endpoint = vals["endpoint"]
-		sc.AccessKeyID = vals["access_key"]
-		if sec := vals["secret_key"]; sec != "" && s.svc.Vault != nil {
+		sc.Bucket = strings.TrimSpace(vals["bucket"])
+		sc.Region = strings.TrimSpace(vals["region"])
+		sc.Endpoint = strings.TrimSpace(vals["endpoint"])
+		sc.AccessKeyID = strings.TrimSpace(vals["access_key"])
+		if sec := strings.TrimSpace(vals["secret_key"]); sec != "" && s.svc.Vault != nil {
 			s.svc.Vault.Set("storage/"+name+"/secret_key", sec)
 			_ = s.svc.Vault.Save()
 		}
 	case "gdrive":
-		sc.FolderID = vals["folder_id"]
-		if creds := vals["credentials"]; creds != "" && s.svc.Vault != nil {
+		sc.FolderID = strings.TrimSpace(vals["folder_id"])
+		if creds := strings.TrimSpace(vals["credentials"]); creds != "" && s.svc.Vault != nil {
 			s.svc.Vault.Set("storage/"+name+"/credentials", creds)
 			_ = s.svc.Vault.Save()
 		}
