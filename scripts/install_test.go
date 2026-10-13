@@ -14,9 +14,7 @@ import (
 func TestInstallScriptsExist(t *testing.T) {
 	files := []string{
 		"install.sh",
-		"install.ps1",
 		filepath.Join("scripts", "install.sh"),
-		filepath.Join("scripts", "install.ps1"),
 		".goreleaser.yaml",
 	}
 
@@ -65,7 +63,7 @@ func TestGoreleaserConfigValid(t *testing.T) {
 		t.Fatalf("expected binary name 'dbk', got %q", build.Binary)
 	}
 
-	expectedOS := map[string]bool{"linux": true, "darwin": true, "windows": true}
+	expectedOS := map[string]bool{"linux": true, "darwin": true}
 	for _, o := range build.Goos {
 		delete(expectedOS, o)
 	}

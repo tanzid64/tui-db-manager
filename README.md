@@ -34,12 +34,6 @@
 curl -fsSL https://raw.githubusercontent.com/tanzid64/tui-db-manager/main/install.sh | sh
 ```
 
-### Windows (PowerShell)
-
-```powershell
-irm https://raw.githubusercontent.com/tanzid64/tui-db-manager/main/install.ps1 | iex
-```
-
 ### Using Go
 
 ```bash
