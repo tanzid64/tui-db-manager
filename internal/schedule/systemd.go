@@ -64,24 +64,75 @@ func CronToOnCalendar(expr string) string {
 		}
 	}
 
-	// General fallback: "dow *-mon-dom hour:min:00"
+	formatPart := func(f string) string {
+		if f == "*" {
+			return "*"
+		}
+		if strings.HasPrefix(f, "*/") {
+			return "00/" + strings.TrimPrefix(f, "*/")
+		}
+		if n, err := strconv.Atoi(f); err == nil {
+			return fmt.Sprintf("%02d", n)
+		}
+		if strings.Contains(f, "-") && !strings.Contains(f, "..") {
+			parts := strings.Split(f, "-")
+			if len(parts) == 2 {
+				p0 := parts[0]
+				p1 := parts[1]
+				if n0, err := strconv.Atoi(p0); err == nil {
+					p0 = fmt.Sprintf("%02d", n0)
+				}
+				if n1, err := strconv.Atoi(p1); err == nil {
+					p1 = fmt.Sprintf("%02d", n1)
+				}
+				return p0 + ".." + p1
+			}
+		}
+		return f
+	}
+
+	minPart := formatPart(min)
+	hourPart := formatPart(hour)
+	domPart := formatPart(dom)
+	monPart := formatPart(mon)
+
 	datePart := "*-"
 	if mon == "*" {
 		datePart += "*-"
 	} else {
-		datePart += mon + "-"
+		datePart += monPart + "-"
 	}
 	if dom == "*" {
 		datePart += "*"
 	} else {
-		datePart += dom
+		datePart += domPart
 	}
 
-	timePart := fmt.Sprintf("%s:%s:00", hour, min)
+	timePart := fmt.Sprintf("%s:%s:00", hourPart, minPart)
+
+	// Day of week conversion
+	dowMap := map[string]string{
+		"0": "Sun", "7": "Sun",
+		"1": "Mon", "2": "Tue", "3": "Wed", "4": "Thu", "5": "Fri", "6": "Sat",
+	}
+	dowPart := dow
+	if mapped, ok := dowMap[dow]; ok {
+		dowPart = mapped
+	} else if strings.Contains(dow, "-") {
+		parts := strings.Split(dow, "-")
+		if len(parts) == 2 {
+			p1, ok1 := dowMap[parts[0]]
+			p2, ok2 := dowMap[parts[1]]
+			if ok1 && ok2 {
+				dowPart = p1 + ".." + p2
+			}
+		}
+	}
+
 	if dow == "*" {
 		return fmt.Sprintf("%s %s", datePart, timePart)
 	}
-	return fmt.Sprintf("%s %s %s", dow, datePart, timePart)
+	return fmt.Sprintf("%s %s %s", dowPart, datePart, timePart)
 }
 
 func (s *SystemdScheduler) Install(ctx context.Context, job string, opts InstallOptions) error {
@@ -131,8 +182,12 @@ WantedBy=timers.target
 	}
 
 	_, _ = s.executor(ctx, nil, "systemctl", "--user", "daemon-reload")
-	_, err = s.executor(ctx, nil, "systemctl", "--user", "enable", "--now", timerUnitName(job))
+	out, err := s.executor(ctx, nil, "systemctl", "--user", "enable", "--now", timerUnitName(job))
 	if err != nil {
+		outStr := strings.TrimSpace(string(out))
+		if outStr != "" {
+			return fmt.Errorf("enable systemd timer %s: %w (%s)", timerUnitName(job), err, outStr)
+		}
 		return fmt.Errorf("enable systemd timer %s: %w", timerUnitName(job), err)
 	}
 
