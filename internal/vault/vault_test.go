@@ -100,3 +100,75 @@ func TestStoreMerge(t *testing.T) {
 		t.Fatalf("expected k2 to be new2, got %s", val)
 	}
 }
+
+func TestLegacyEncMigration(t *testing.T) {
+	dir := t.TempDir()
+	// Create legacy encrypted vault
+	s, err := Create(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Set("storage/r2/secret_key", "supersecret123")
+	encBlob, err := s.Export("my-passphrase")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyPath := filepath.Join(dir, "secrets.enc")
+	if err := os.WriteFile(legacyPath, encBlob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Without DBK_PASSPHRASE: Exists should be false, Open should return ErrNotExist
+	t.Setenv("DBK_PASSPHRASE", "")
+	if Exists(dir) {
+		t.Fatal("expected Exists to be false when secrets.enc exists without DBK_PASSPHRASE")
+	}
+	if _, err := Open(dir); !os.IsNotExist(err) {
+		t.Fatalf("expected os.ErrNotExist, got %v", err)
+	}
+
+	// 2. With wrong DBK_PASSPHRASE: Exists is true, Open should fail migration
+	t.Setenv("DBK_PASSPHRASE", "wrong-passphrase")
+	if !Exists(dir) {
+		t.Fatal("expected Exists to be true when DBK_PASSPHRASE is provided")
+	}
+	if _, err := Open(dir); err == nil {
+		t.Fatal("expected Open to fail with wrong DBK_PASSPHRASE")
+	}
+
+	// 3. With correct DBK_PASSPHRASE: Exists is true, Open migrates secrets.enc to secrets.json
+	t.Setenv("DBK_PASSPHRASE", "my-passphrase")
+	if !Exists(dir) {
+		t.Fatal("expected Exists to be true with correct DBK_PASSPHRASE")
+	}
+	migrated, err := Open(dir)
+	if err != nil {
+		t.Fatalf("expected Open to succeed, got %v", err)
+	}
+	if val, ok := migrated.Get("storage/r2/secret_key"); !ok || val != "supersecret123" {
+		t.Fatalf("unexpected migrated secret: %q (ok=%v)", val, ok)
+	}
+
+	// Verify secrets.json was created on disk
+	info, err := os.Stat(filepath.Join(dir, "secrets.json"))
+	if err != nil {
+		t.Fatalf("stat secrets.json after migration: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("expected 0600 permissions on secrets.json, got %o", perm)
+	}
+
+	// 4. Subsequent Open without DBK_PASSPHRASE should now succeed directly via secrets.json
+	t.Setenv("DBK_PASSPHRASE", "")
+	if !Exists(dir) {
+		t.Fatal("expected Exists to be true once secrets.json exists")
+	}
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatalf("reopening migrated secrets.json failed: %v", err)
+	}
+	if val, ok := reopened.Get("storage/r2/secret_key"); !ok || val != "supersecret123" {
+		t.Fatalf("unexpected secret after reopening: %q (ok=%v)", val, ok)
+	}
+}
+

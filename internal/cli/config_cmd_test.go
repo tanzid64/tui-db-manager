@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/tanzid64/tui-db-manager/internal/config"
+	"github.com/tanzid64/tui-db-manager/internal/store"
 	"github.com/tanzid64/tui-db-manager/internal/vault"
 )
 
@@ -77,18 +78,35 @@ func TestConfigExportImportEndToEnd(t *testing.T) {
 	}
 
 	// 4. Verify target directory has config and functional decrypted vault
-	destCfg, err := config.Load(destDir)
-	if err != nil {
-		t.Fatalf("load dest config: %v", err)
+	var destCfg *config.Config
+	var destVault SecretGetter
+
+	if store.Exists(destDir) {
+		s, err := store.Open(destDir, store.ResolveMasterKey(destDir))
+		if err != nil {
+			t.Fatalf("open dest store: %v", err)
+		}
+		destCfg, err = s.LoadConfig()
+		if err != nil {
+			t.Fatalf("load dest config: %v", err)
+		}
+		destVault = s
+	} else {
+		destCfg, err = config.Load(destDir)
+		if err != nil {
+			t.Fatalf("load dest config: %v", err)
+		}
+		v, err := vault.Open(destDir)
+		if err != nil {
+			t.Fatalf("open dest vault: %v", err)
+		}
+		destVault = v
 	}
+
 	if len(destCfg.Jobs) != 1 || destCfg.Jobs[0].Name != "prod" {
 		t.Fatalf("dest config mismatch: %+v", destCfg)
 	}
 
-	destVault, err := vault.Open(destDir)
-	if err != nil {
-		t.Fatalf("open dest vault: %v", err)
-	}
 	val, ok := destVault.Get("job/prod/password")
 	if !ok || val != "db-pass-999" {
 		t.Fatalf("dest vault password mismatch: %q ok=%v", val, ok)

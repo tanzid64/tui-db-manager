@@ -11,10 +11,16 @@ import (
 	"github.com/tanzid64/tui-db-manager/internal/notify"
 	"github.com/tanzid64/tui-db-manager/internal/secretref"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
+	"github.com/tanzid64/tui-db-manager/internal/store"
 	"github.com/tanzid64/tui-db-manager/internal/vault"
 )
 
-func buildBackend(ctx context.Context, sc config.StorageConfig, v *vault.Store) (storage.Backend, error) {
+// SecretGetter abstracts reading secrets by key. Both *store.DB and *vault.Store satisfy this.
+type SecretGetter interface {
+	Get(key string) (string, bool)
+}
+
+func buildBackend(ctx context.Context, sc config.StorageConfig, v SecretGetter) (storage.Backend, error) {
 	switch sc.Type {
 	case "local":
 		return storage.NewLocal(sc.Path), nil
@@ -48,7 +54,7 @@ func buildBackend(ctx context.Context, sc config.StorageConfig, v *vault.Store) 
 	}
 }
 
-func resolveGDriveCredentials(sc config.StorageConfig, v *vault.Store) (string, error) {
+func resolveGDriveCredentials(sc config.StorageConfig, v SecretGetter) (string, error) {
 	var lookup func(string) (string, bool)
 	if v != nil {
 		lookup = v.Get
@@ -74,7 +80,7 @@ func extractPrivateKey(saJSON string) string {
 
 // resolveStorageSecret resolves an S3 secret key from the storage's SecretKeyRef
 // (env:/file:/vault), defaulting to the vault key "storage/<name>/secret_key".
-func resolveStorageSecret(sc config.StorageConfig, v *vault.Store) (string, error) {
+func resolveStorageSecret(sc config.StorageConfig, v SecretGetter) (string, error) {
 	var lookup func(string) (string, bool)
 	if v != nil {
 		lookup = v.Get
@@ -97,7 +103,7 @@ func engineResolver() func(string) (db.Engine, bool) {
 
 // resolvePassword returns a closure that resolves a job's DB password from a
 // PasswordRef (env:/file:) or the vault key "job/<name>/password".
-func resolvePassword(v *vault.Store) func(config.Job) (string, error) {
+func resolvePassword(v SecretGetter) func(config.Job) (string, error) {
 	return func(j config.Job) (string, error) {
 		ref := j.Conn.PasswordRef
 		var lookup func(string) (string, bool)
@@ -121,7 +127,7 @@ func resolvePassword(v *vault.Store) func(config.Job) (string, error) {
 
 // resolveIdentity returns a closure that resolves a job's age identity (private key)
 // from the vault key "job/<name>/age_identity" for decrypting backups.
-func resolveIdentity(v *vault.Store) func(config.Job) (string, error) {
+func resolveIdentity(v SecretGetter) func(config.Job) (string, error) {
 	return func(j config.Job) (string, error) {
 		if v == nil {
 			return "", fmt.Errorf("vault is required to decrypt backup for job %q", j.Name)
@@ -133,20 +139,23 @@ func resolveIdentity(v *vault.Store) func(config.Job) (string, error) {
 	}
 }
 
-// maybeOpenVault opens the vault if it exists, else returns nil (jobs may have
-// no secrets, e.g. sqlite).
-func maybeOpenVault(dir string) (*vault.Store, error) {
-	if !vault.Exists(dir) {
-		return nil, nil
+// maybeOpenVault opens the vault or database store if it exists, else returns nil.
+func maybeOpenVault(dir string) (SecretGetter, error) {
+	if store.Exists(dir) {
+		key := store.ResolveMasterKey(dir)
+		return store.Open(dir, key)
 	}
-	return vault.Open(dir)
+	if vault.Exists(dir) {
+		return vault.Open(dir)
+	}
+	return nil, nil
 }
 
 func errUnknownJob(name string) error      { return fmt.Errorf("job %q not found", name) }
 func errUnknownStorage(name string) error  { return fmt.Errorf("storage %q not found", name) }
 func errUnknownNotifier(name string) error { return fmt.Errorf("notifier %q not found", name) }
 
-func buildNotifier(ctx context.Context, nc config.NotifierConfig, v *vault.Store) (notify.Notifier, error) {
+func buildNotifier(ctx context.Context, nc config.NotifierConfig, v SecretGetter) (notify.Notifier, error) {
 	switch nc.Type {
 	case "telegram":
 		token, err := resolveNotifierSecret(nc.Name, nc.BotTokenRef, "bot_token", v)
@@ -202,7 +211,7 @@ func buildNotifier(ctx context.Context, nc config.NotifierConfig, v *vault.Store
 	}
 }
 
-func resolveNotifierSecret(notifierName, ref, keyName string, v *vault.Store) (string, error) {
+func resolveNotifierSecret(notifierName, ref, keyName string, v SecretGetter) (string, error) {
 	var lookup func(string) (string, bool)
 	if v != nil {
 		lookup = v.Get

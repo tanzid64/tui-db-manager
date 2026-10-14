@@ -19,14 +19,26 @@ import (
 	"github.com/tanzid64/tui-db-manager/internal/schedule"
 	"github.com/tanzid64/tui-db-manager/internal/secretref"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
+	"github.com/tanzid64/tui-db-manager/internal/store"
 	"github.com/tanzid64/tui-db-manager/internal/vault"
 )
+
+type VaultStore interface {
+	Get(key string) (string, bool)
+	Set(key, val string)
+	Delete(key string)
+	Keys() []string
+	Save() error
+	Export(transferPassphrase string) ([]byte, error)
+	Merge(secrets map[string]string, overwrite bool) (added, updated, skipped int)
+}
 
 type Service struct {
 	ConfigDir string
 	PassFile  string
 	Cfg       *config.Config
-	Vault     *vault.Store
+	Vault     VaultStore
+	Store     *store.DB
 	Log       *logutil.Logger
 }
 
@@ -40,22 +52,86 @@ func NewService(configDir, passFile string) (*Service, error) {
 		PassFile:  passFile,
 		Log:       logutil.New(io.Discard, logutil.LevelInfo),
 	}
-	globalHistory = history.New(filepath.Join(dir, "history.jsonl"))
-	_ = s.ReloadConfig()
-	if vault.Exists(dir) {
+
+	key := store.ResolveMasterKey(dir)
+
+	if store.Exists(dir) {
+		db, err := store.Open(dir, key)
+		if err == nil {
+			s.Store = db
+			s.Vault = db
+			globalHistory = history.NewDB(db)
+			s.Cfg, _ = db.LoadConfig()
+		} else {
+			// Open locked if key invalid or empty
+			if lockedDB, err := store.Open(dir, ""); err == nil {
+				s.Store = lockedDB
+				s.Vault = lockedDB
+				globalHistory = history.NewDB(lockedDB)
+				s.Cfg, _ = lockedDB.LoadConfig()
+			}
+		}
+	} else if store.LegacyFilesExist(dir) {
+		if key == "" {
+			key = "dbk-default"
+		}
+		db, err := store.Init(dir, key)
+		if err == nil {
+			_ = store.SaveMasterKeyToEnv(dir, key)
+			_, _ = store.MigrateFromFiles(dir, db)
+			s.Store = db
+			s.Vault = db
+			globalHistory = history.NewDB(db)
+			s.Cfg, _ = db.LoadConfig()
+		}
+	} else {
+		// New database initialization
+		if key == "" {
+			key = "dbk-default"
+		}
+		db, err := store.Init(dir, key)
+		if err == nil {
+			_ = store.SaveMasterKeyToEnv(dir, key)
+			s.Store = db
+			s.Vault = db
+			globalHistory = history.NewDB(db)
+			_ = db.SaveConfig(&config.Config{
+				Version:   config.CurrentVersion,
+				Jobs:      []config.Job{},
+				Storages:  []config.StorageConfig{},
+				Notifiers: []config.NotifierConfig{},
+			})
+			s.Cfg, _ = db.LoadConfig()
+		} else if vault.Exists(dir) {
+			if v, err := vault.Open(dir); err == nil {
+				s.Vault = v
+			}
+			globalHistory = history.New(filepath.Join(dir, "history.jsonl"))
+			_ = s.ReloadConfig()
+		}
+	}
+
+	if s.Cfg == nil {
+		_ = s.ReloadConfig()
+	}
+	if s.Vault == nil && vault.Exists(dir) {
 		if v, err := vault.Open(dir); err == nil {
 			s.Vault = v
 		}
-	} else {
-		if v, err := vault.Create(dir); err == nil {
-			_ = v.Save()
-			s.Vault = v
-		}
 	}
+
 	return s, nil
 }
 
 func (s *Service) ReloadConfig() error {
+	if s.Store != nil {
+		cfg, err := s.Store.LoadConfig()
+		if err == nil && cfg != nil {
+			s.Cfg = cfg
+			return nil
+		}
+	}
+
 	if config.Exists(s.ConfigDir) {
 		cfg, err := config.Load(s.ConfigDir)
 		if err != nil {
@@ -77,33 +153,51 @@ func (s *Service) SaveConfig() error {
 	if s.Cfg == nil {
 		return fmt.Errorf("no config loaded")
 	}
+	if s.Store != nil {
+		return s.Store.SaveConfig(s.Cfg)
+	}
 	return config.Save(s.ConfigDir, s.Cfg)
 }
 
 func (s *Service) HasConfig() bool {
+	if s.Store != nil {
+		return true
+	}
 	return config.Exists(s.ConfigDir)
 }
 
 func (s *Service) HasVault() bool {
-	return vault.Exists(s.ConfigDir)
+	if s.Store != nil {
+		return true
+	}
+	return s.Vault != nil
 }
 
 func (s *Service) IsVaultUnlocked() bool {
+	if s.Store != nil {
+		return s.Store.IsUnlocked()
+	}
 	return s.Vault != nil
 }
 
 func (s *Service) TryAutoUnlock() error {
-	if s.Vault == nil && vault.Exists(s.ConfigDir) {
-		v, err := vault.Open(s.ConfigDir)
-		if err != nil {
-			return err
+	if s.Store != nil && !s.Store.IsUnlocked() {
+		key := store.ResolveMasterKey(s.ConfigDir)
+		if key != "" {
+			_ = s.Store.Unlock(key)
 		}
-		s.Vault = v
 	}
 	return nil
 }
 
-func (s *Service) UnlockVault(_ ...string) error {
+func (s *Service) UnlockVault(pass ...string) error {
+	if len(pass) > 0 && pass[0] != "" && s.Store != nil {
+		return s.Store.Unlock(pass[0])
+	}
+	if s.Store != nil {
+		key := store.ResolveMasterKey(s.ConfigDir)
+		return s.Store.Unlock(key)
+	}
 	v, err := vault.Open(s.ConfigDir)
 	if err != nil {
 		return err
@@ -112,13 +206,34 @@ func (s *Service) UnlockVault(_ ...string) error {
 	return nil
 }
 
-func (s *Service) CreateVault(_ ...string) error {
-	v, err := vault.Create(s.ConfigDir)
+func (s *Service) CreateVault(pass ...string) error {
+	key := "dbk-default"
+	if len(pass) > 0 && pass[0] != "" {
+		key = pass[0]
+	}
+	if s.Store != nil && s.Store.IsUnlocked() {
+		return nil
+	}
+	if s.Store != nil {
+		return s.Store.Unlock(key)
+	}
+	if store.Exists(s.ConfigDir) {
+		db, err := store.Open(s.ConfigDir, key)
+		if err == nil {
+			s.Store = db
+			s.Vault = db
+			globalHistory = history.NewDB(db)
+			return nil
+		}
+	}
+	db, err := store.Init(s.ConfigDir, key)
 	if err != nil {
 		return err
 	}
-	s.Vault = v
-	return s.Vault.Save()
+	s.Store = db
+	s.Vault = db
+	globalHistory = history.NewDB(db)
+	return nil
 }
 
 func (s *Service) BuildBackend(ctx context.Context, sc config.StorageConfig) (storage.Backend, error) {
@@ -431,10 +546,18 @@ func (s *Service) InstallSchedule(jobName, expr string) error {
 	if expr == "" {
 		expr = "0 3 * * *"
 	}
+	masterKey := ""
+	if s.Store != nil {
+		masterKey = s.Store.Passphrase()
+	}
+	if masterKey == "" {
+		masterKey = store.ResolveMasterKey(s.ConfigDir)
+	}
 	return drv.Install(context.Background(), jobName, schedule.InstallOptions{
 		Expression:     expr,
 		ConfigDir:      s.ConfigDir,
 		PassphraseFile: s.PassFile,
+		MasterKey:      masterKey,
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tanzid64/tui-db-manager/internal/schedule"
+	"github.com/tanzid64/tui-db-manager/internal/store"
 )
 
 var defaultScheduler = schedule.DetectScheduler()
@@ -45,12 +46,21 @@ func newScheduleInstallCmd() *cobra.Command {
 			passFile, _ := cmd.Flags().GetString("passphrase-file")
 			pathOverride, _ := cmd.Flags().GetString("path")
 
+			masterKey := ""
+			if app.store != nil {
+				masterKey = app.store.Passphrase()
+			}
+			if masterKey == "" {
+				masterKey = store.ResolveMasterKey(app.dir)
+			}
+
 			sched := defaultScheduler
 			opts := schedule.InstallOptions{
 				Expression:     at,
 				ConfigDir:      app.dir,
 				PassphraseFile: passFile,
 				PathOverride:   pathOverride,
+				MasterKey:      masterKey,
 			}
 
 			if err := sched.Install(cmd.Context(), job.Name, opts); err != nil {

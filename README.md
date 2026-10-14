@@ -178,10 +178,11 @@ notifiers:
 
 ## Security Model
 
-1. **Isolated Secrets Vault:** Secrets (`secrets.json`) are stored with strict `0600` file permissions separate from configuration, removing passphrase barriers for automated cron and systemd execution.
-2. **At-Rest Protection:** Dump streams can be encrypted on-the-fly using `age` (X25519) before hitting the network, ensuring zero exposure to third-party cloud providers.
-3. **Safe Memory & Execution:** DB passwords are piped through standard input or injected via temporary scoped files with `0600` permissions. Process arguments never contain credentials.
-4. **Log Redaction:** All logger sinks pass through a string scrubbing filter that automatically redacts known secrets and tokens.
+1. **Unified SQLite Vault & At-Rest Encryption:** Configuration, history audit trails, and encrypted credentials are stored in a dedicated SQLite database (`dbk.db`) with strict `0600` file permissions. Sensitive secret values are encrypted at the application level using XChaCha20-Poly1305 with an Argon2id key derived from the master key.
+2. **Automated Scheduling with Environment Isolation:** Automated cron, systemd, and task scheduler wrapper scripts securely export `DBK_MASTER_KEY` into their isolated execution environments with `0700` wrapper permissions, enabling seamless unattended operations on VPS and cPanel alike.
+3. **Zero-Knowledge Cloud Encryption:** Dump streams can be encrypted on-the-fly using `age` (X25519) before hitting the network, ensuring zero exposure to third-party cloud providers.
+4. **Safe Memory & Execution:** DB passwords are piped through standard input or injected via temporary scoped files with `0600` permissions. Process arguments never contain credentials.
+5. **Log Redaction:** All logger sinks pass through a string scrubbing filter that automatically redacts known secrets and tokens.
 
 ---
 

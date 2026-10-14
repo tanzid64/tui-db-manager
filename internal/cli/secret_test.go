@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -40,3 +42,33 @@ func TestSecretSetLsRm(t *testing.T) {
 		t.Fatalf("key should be gone after rm, got %q", out)
 	}
 }
+
+func TestSecretCmdWithLegacyEnc(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "secrets.enc"), []byte("dummy-encrypted-data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(args ...string) (string, error) {
+		root := NewRootCmd()
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&out)
+		root.SetArgs(append([]string{"--config", dir}, args...))
+		err := root.Execute()
+		return out.String(), err
+	}
+
+	if _, err := run("secret", "set", "storage/s3/key", "--value", "val123"); err != nil {
+		t.Fatalf("secret set failed with legacy secrets.enc present: %v", err)
+	}
+
+	out, err := run("secret", "ls")
+	if err != nil {
+		t.Fatalf("secret ls failed: %v", err)
+	}
+	if !strings.Contains(out, "storage/s3/key") {
+		t.Fatalf("expected storage/s3/key in secret ls, got %q", out)
+	}
+}
+

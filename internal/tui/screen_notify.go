@@ -340,9 +340,14 @@ func (s *NotifyScreen) handleNotifyWizardFinish(vals map[string]string) {
 	switch nType {
 	case "telegram":
 		nc.ChatID = vals["chat_id"]
-		if tok := vals["bot_token"]; tok != "" && s.svc.Vault != nil {
-			s.svc.Vault.Set("notifier/"+name+"/bot_token", tok)
-			_ = s.svc.Vault.Save()
+		if tok := vals["bot_token"]; tok != "" {
+			if s.svc.Vault == nil {
+				_ = s.svc.CreateVault()
+			}
+			if s.svc.Vault != nil {
+				s.svc.Vault.Set("notifier/"+name+"/bot_token", tok)
+				_ = s.svc.Vault.Save()
+			}
 		}
 	case "email":
 		port, _ := strconv.Atoi(vals["port"])
@@ -357,15 +362,25 @@ func (s *NotifyScreen) handleNotifyWizardFinish(vals map[string]string) {
 		}
 		nc.Username = vals["username"]
 		nc.TLS = vals["tls"] == "true"
-		if pwd := vals["password"]; pwd != "" && s.svc.Vault != nil {
-			s.svc.Vault.Set("notifier/"+name+"/password", pwd)
-			_ = s.svc.Vault.Save()
+		if pwd := vals["password"]; pwd != "" {
+			if s.svc.Vault == nil {
+				_ = s.svc.CreateVault()
+			}
+			if s.svc.Vault != nil {
+				s.svc.Vault.Set("notifier/"+name+"/password", pwd)
+				_ = s.svc.Vault.Save()
+			}
 		}
 	case "webhook":
 		nc.URL = vals["url"]
-		if tok := vals["token"]; tok != "" && s.svc.Vault != nil {
-			s.svc.Vault.Set("notifier/"+name+"/token", tok)
-			_ = s.svc.Vault.Save()
+		if tok := vals["token"]; tok != "" {
+			if s.svc.Vault == nil {
+				_ = s.svc.CreateVault()
+			}
+			if s.svc.Vault != nil {
+				s.svc.Vault.Set("notifier/"+name+"/token", tok)
+				_ = s.svc.Vault.Save()
+			}
 		}
 	}
 

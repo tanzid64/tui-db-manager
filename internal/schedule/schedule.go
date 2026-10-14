@@ -16,6 +16,7 @@ type InstallOptions struct {
 	PassphraseFile string // optional --passphrase-file
 	PathOverride   string // if set, used verbatim as the wrapper's PATH
 	WrapperDir     string // directory for the generated wrapper script; defaults to ConfigDir/schedules
+	MasterKey      string // optional DBK_MASTER_KEY to bake into the wrapper script
 }
 
 // standardPathDirs are always merged into a scheduled job's PATH so that
@@ -88,8 +89,16 @@ func resolveBinary(opts InstallOptions) (string, error) {
 
 // renderWrapperScript builds the POSIX sh wrapper that a scheduler invokes.
 // It pins PATH so client tools resolve in a stripped scheduler environment,
-// then execs the dbk run command.
-func renderWrapperScript(job, pathValue, cmdStr string) string {
+// exports DBK_MASTER_KEY if provided, then execs the dbk run command.
+func renderWrapperScript(job, pathValue, masterKey, cmdStr string) string {
+	if masterKey != "" {
+		return fmt.Sprintf(`#!/bin/sh
+# dbk schedule wrapper for job %q — managed by dbk, do not edit.
+export PATH=%q
+export DBK_MASTER_KEY=%q
+exec %s
+`, job, pathValue, masterKey, cmdStr)
+	}
 	return fmt.Sprintf(`#!/bin/sh
 # dbk schedule wrapper for job %q — managed by dbk, do not edit.
 export PATH=%q
@@ -115,7 +124,7 @@ func writeWrapper(job string, opts InstallOptions) (string, error) {
 		return "", err
 	}
 	pathValue := effectivePath(os.Getenv("PATH"), filepath.Dir(bin), opts.PathOverride)
-	content := renderWrapperScript(job, pathValue, cmdStr)
+	content := renderWrapperScript(job, pathValue, opts.MasterKey, cmdStr)
 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create schedule wrapper directory %s: %w", dir, err)

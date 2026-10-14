@@ -495,9 +495,14 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 	}
 
 	// Store password in vault if provided
-	if pwd := vals["password"]; pwd != "" && s.svc.Vault != nil {
-		s.svc.Vault.Set("job/"+name+"/password", pwd)
-		_ = s.svc.Vault.Save()
+	if pwd := vals["password"]; pwd != "" {
+		if s.svc.Vault == nil {
+			_ = s.svc.CreateVault()
+		}
+		if s.svc.Vault != nil {
+			s.svc.Vault.Set("job/"+name+"/password", pwd)
+			_ = s.svc.Vault.Save()
+		}
 	}
 
 	if s.isEditing {

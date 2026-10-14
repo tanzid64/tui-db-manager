@@ -19,8 +19,10 @@ func Exists(dir string) bool {
 	if _, err := os.Stat(Path(dir)); err == nil {
 		return true
 	}
-	_, err := os.Stat(filepath.Join(dir, "secrets.enc"))
-	return err == nil
+	if _, err := os.Stat(filepath.Join(dir, "secrets.enc")); err == nil {
+		return os.Getenv("DBK_PASSPHRASE") != ""
+	}
+	return false
 }
 
 func Create(dir string) (*Store, error) {
@@ -54,6 +56,8 @@ func Open(dir string) (*Store, error) {
 			if s, migErr := openLegacy(p, encBlob, pass); migErr == nil {
 				_ = s.Save()
 				return s, nil
+			} else {
+				return nil, fmt.Errorf("migrate legacy encrypted vault: %w", migErr)
 			}
 		}
 	}

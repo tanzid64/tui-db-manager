@@ -18,9 +18,15 @@ func newTestCmd() *cobra.Command {
 				return err
 			}
 			target := args[0]
-			v, err := maybeOpenVault(app.dir)
-			if err != nil {
-				return err
+			var v SecretGetter
+			if app.store != nil && app.store.IsUnlocked() {
+				v = app.store
+			} else {
+				opened, err := maybeOpenVault(app.dir)
+				if err != nil {
+					return err
+				}
+				v = opened
 			}
 
 			// 1. Check if target is a Job

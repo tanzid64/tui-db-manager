@@ -23,9 +23,15 @@ func newRestoreCmd() *cobra.Command {
 			at, _ := cmd.Flags().GetString("at")
 			to, _ := cmd.Flags().GetString("to")
 			yes, _ := cmd.Flags().GetBool("yes")
-			v, err := maybeOpenVault(app.dir)
-			if err != nil {
-				return err
+			var v SecretGetter
+			if app.store != nil && app.store.IsUnlocked() {
+				v = app.store
+			} else {
+				opened, err := maybeOpenVault(app.dir)
+				if err != nil {
+					return err
+				}
+				v = opened
 			}
 			job, ok := app.cfg.Job(args[0])
 			if !ok {

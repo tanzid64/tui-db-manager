@@ -3,12 +3,16 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/tanzid64/tui-db-manager/internal/buildinfo"
+	"github.com/tanzid64/tui-db-manager/internal/config"
+	"github.com/tanzid64/tui-db-manager/internal/store"
 	"github.com/tanzid64/tui-db-manager/internal/update"
+	"golang.org/x/term"
 )
 
 type screenID int
@@ -281,7 +285,14 @@ func (a *App) View() string {
 	}
 	header := RenderHeader(headerText, a.width)
 
-	footer := styleHelp.Render(" [Vault: Ready] ")
+	var footer string
+	if a.svc.IsVaultUnlocked() {
+		footer = styleHelp.Render(" [Vault: Ready] ")
+	} else if a.svc.HasVault() {
+		footer = styleWarning.Render(" [Vault: Locked] ")
+	} else {
+		footer = styleError.Render(" [Vault: Unavailable] ")
+	}
 
 	view := lipgloss.JoinVertical(lipgloss.Left, header, "\n", body, "\n", footer)
 	return view
@@ -333,6 +344,22 @@ func (a *App) renderUpdateModal() string {
 
 // Run launches the Bubble Tea TUI application.
 func Run(configDir, passFile string) error {
+	dir, err := config.Dir(configDir)
+	if err != nil {
+		return err
+	}
+
+	if store.Exists(dir) {
+		key := store.ResolveMasterKey(dir)
+		if key == "" && term.IsTerminal(int(os.Stdin.Fd())) {
+			fmt.Fprint(os.Stderr, "Enter Master Key: ")
+			if b, err := term.ReadPassword(int(os.Stdin.Fd())); err == nil {
+				fmt.Fprintln(os.Stderr)
+				_ = os.Setenv(store.MasterKeyEnvVar, string(b))
+			}
+		}
+	}
+
 	svc, err := NewService(configDir, passFile)
 	if err != nil {
 		return fmt.Errorf("init tui service: %w", err)

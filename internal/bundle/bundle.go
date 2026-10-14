@@ -30,10 +30,16 @@ type ImportResult struct {
 	SecretsSkipped int
 }
 
+type VaultStore interface {
+	Export(transferPassphrase string) ([]byte, error)
+	Merge(secrets map[string]string, overwrite bool) (added, updated, skipped int)
+	Save() error
+}
+
 // Export creates a portable bundle from the provided config and optional vault store.
 // If transferPassphrase is provided and v is non-nil, all secrets in v are re-encrypted
 // with the transferPassphrase and embedded into the bundle as a base64 string.
-func Export(cfg *config.Config, v *vault.Store, transferPassphrase string) (*Bundle, error) {
+func Export(cfg *config.Config, v VaultStore, transferPassphrase string) (*Bundle, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
@@ -96,16 +102,37 @@ func Load(targetFile string) (*Bundle, error) {
 	return &b, nil
 }
 
+type configSaver interface {
+	SaveConfig(c *config.Config) error
+	LoadConfig() (*config.Config, error)
+}
+
 // Import merges the bundle's config and decrypted secrets into the local configuration.
-func (b *Bundle) Import(cfgDir string, v *vault.Store, transferPassphrase string, overwrite bool) (*ImportResult, error) {
-	localCfg, err := config.Load(cfgDir)
-	if err != nil {
-		return nil, fmt.Errorf("load local config: %w", err)
+func (b *Bundle) Import(cfgDir string, v VaultStore, transferPassphrase string, overwrite bool) (*ImportResult, error) {
+	var localCfg *config.Config
+	if cs, ok := v.(configSaver); ok && cs != nil {
+		if dbCfg, err := cs.LoadConfig(); err == nil && dbCfg != nil {
+			localCfg = dbCfg
+		}
+	}
+	if localCfg == nil {
+		var err error
+		localCfg, err = config.Load(cfgDir)
+		if err != nil {
+			return nil, fmt.Errorf("load local config: %w", err)
+		}
 	}
 
 	cfgRes := localCfg.Merge(b.Config, overwrite)
-	if err := config.Save(cfgDir, localCfg); err != nil {
-		return nil, fmt.Errorf("save merged config: %w", err)
+
+	if cs, ok := v.(configSaver); ok && cs != nil {
+		if err := cs.SaveConfig(localCfg); err != nil {
+			return nil, fmt.Errorf("save merged config to database: %w", err)
+		}
+	} else {
+		if err := config.Save(cfgDir, localCfg); err != nil {
+			return nil, fmt.Errorf("save merged config: %w", err)
+		}
 	}
 
 	res := &ImportResult{

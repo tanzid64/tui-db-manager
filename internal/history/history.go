@@ -36,12 +36,19 @@ type RunRecord struct {
 	Target   string        `json:"target,omitempty"`
 }
 
-// Store is a file-backed run history at path. The zero value is not usable;
-// construct one with New.
+// DBHandler abstracts the database storage for history run records.
+type DBHandler interface {
+	AppendHistory(rec RunRecord) error
+	AllHistory() ([]RunRecord, error)
+	LastForJob(job string) (*RunRecord, error)
+}
+
+// Store is a run history store backed by SQLite (if db != nil) or a JSON Lines file.
 type Store struct {
 	mu   sync.Mutex
 	path string
 	max  int
+	db   DBHandler
 }
 
 // New returns a history store backed by the JSON Lines file at path.
@@ -49,8 +56,17 @@ func New(path string) *Store {
 	return &Store{path: path, max: maxRecords}
 }
 
-// Append durably records rec, then prunes the file to the newest max records.
+// NewDB returns a history store backed by a SQLite DBHandler.
+func NewDB(db DBHandler) *Store {
+	return &Store{db: db, max: maxRecords}
+}
+
+// Append durably records rec, then prunes if necessary.
 func (s *Store) Append(rec RunRecord) error {
+	if s.db != nil {
+		return s.db.AppendHistory(rec)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -84,6 +100,14 @@ func (s *Store) Append(rec RunRecord) error {
 // All returns every recorded run, newest first. Unreadable or corrupt lines
 // are skipped so a torn write never hides the rest of the history.
 func (s *Store) All() []RunRecord {
+	if s.db != nil {
+		recs, err := s.db.AllHistory()
+		if err == nil {
+			return recs
+		}
+		return nil
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return reverse(s.readLocked())
@@ -91,6 +115,14 @@ func (s *Store) All() []RunRecord {
 
 // LastForJob returns the most recent backup/run record for jobName, or nil.
 func (s *Store) LastForJob(jobName string) *RunRecord {
+	if s.db != nil {
+		rec, err := s.db.LastForJob(jobName)
+		if err == nil {
+			return rec
+		}
+		return nil
+	}
+
 	for _, r := range s.All() {
 		if r.Job == jobName && (r.Action == "backup" || r.Action == "run") {
 			rr := r

@@ -83,6 +83,7 @@ func TestCronInstallWritesWrapper(t *testing.T) {
 		BinaryPath:     "/usr/local/bin/dbk",
 		ConfigDir:      cfgDir,
 		PassphraseFile: filepath.Join(cfgDir, "pass"),
+		MasterKey:      "super-cron-secret",
 	}
 	if err := cs.Install(context.Background(), "orders", opts); err != nil {
 		t.Fatalf("install: %v", err)
@@ -104,6 +105,9 @@ func TestCronInstallWritesWrapper(t *testing.T) {
 	}
 	if !strings.Contains(content, "export PATH=") {
 		t.Fatalf("wrapper missing PATH export: %s", content)
+	}
+	if !strings.Contains(content, `export DBK_MASTER_KEY="super-cron-secret"`) {
+		t.Fatalf("wrapper missing DBK_MASTER_KEY export: %s", content)
 	}
 	if !strings.Contains(content, `"/usr/local/bin/dbk"`) {
 		t.Fatalf("wrapper missing dbk binary: %s", content)

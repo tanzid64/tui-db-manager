@@ -321,15 +321,25 @@ func (s *StorageScreen) handleStorageWizardFinish(vals map[string]string) {
 		sc.Region = strings.TrimSpace(vals["region"])
 		sc.Endpoint = strings.TrimSpace(vals["endpoint"])
 		sc.AccessKeyID = strings.TrimSpace(vals["access_key"])
-		if sec := strings.TrimSpace(vals["secret_key"]); sec != "" && s.svc.Vault != nil {
-			s.svc.Vault.Set("storage/"+name+"/secret_key", sec)
-			_ = s.svc.Vault.Save()
+		if sec := strings.TrimSpace(vals["secret_key"]); sec != "" {
+			if s.svc.Vault == nil {
+				_ = s.svc.CreateVault()
+			}
+			if s.svc.Vault != nil {
+				s.svc.Vault.Set("storage/"+name+"/secret_key", sec)
+				_ = s.svc.Vault.Save()
+			}
 		}
 	case "gdrive":
 		sc.FolderID = strings.TrimSpace(vals["folder_id"])
-		if creds := strings.TrimSpace(vals["credentials"]); creds != "" && s.svc.Vault != nil {
-			s.svc.Vault.Set("storage/"+name+"/credentials", creds)
-			_ = s.svc.Vault.Save()
+		if creds := strings.TrimSpace(vals["credentials"]); creds != "" {
+			if s.svc.Vault == nil {
+				_ = s.svc.CreateVault()
+			}
+			if s.svc.Vault != nil {
+				s.svc.Vault.Set("storage/"+name+"/credentials", creds)
+				_ = s.svc.Vault.Save()
+			}
 		}
 	}
 

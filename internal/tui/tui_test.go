@@ -806,3 +806,37 @@ func TestSettingsScreenScheduleCronValidation(t *testing.T) {
 	}
 }
 
+func TestNewServiceWithLegacyEncVaultFallback(t *testing.T) {
+	dir := t.TempDir()
+	// Place dummy secrets.enc into config dir
+	legacyPath := filepath.Join(dir, "secrets.enc")
+	if err := os.WriteFile(legacyPath, []byte("dummy-enc-blob"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without DBK_PASSPHRASE, NewService must still initialize a working Vault (secrets.json)
+	t.Setenv("DBK_PASSPHRASE", "")
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("NewService failed: %v", err)
+	}
+	if svc.Vault == nil {
+		t.Fatal("expected svc.Vault to be non-nil")
+	}
+
+	// Storage wizard should be able to store secret and resolve it
+	screen := NewStorageScreen(svc, nil)
+	screen.handleStorageWizardFinish(map[string]string{
+		"name":       "EMBA-ADMISSION-R2",
+		"type":       "s3",
+		"bucket":     "mybucket",
+		"secret_key": "mysecretkey",
+	})
+
+	sec, ok := svc.Vault.Get("storage/EMBA-ADMISSION-R2/secret_key")
+	if !ok || sec != "mysecretkey" {
+		t.Fatalf("expected secret_key to be saved in vault, got %q (ok=%v)", sec, ok)
+	}
+}
+
+

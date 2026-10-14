@@ -22,9 +22,15 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			v, err := maybeOpenVault(app.dir)
-			if err != nil {
-				return err
+			var v SecretGetter
+			if app.store != nil && app.store.IsUnlocked() {
+				v = app.store
+			} else {
+				opened, err := maybeOpenVault(app.dir)
+				if err != nil {
+					return err
+				}
+				v = opened
 			}
 			deps := backup.Deps{
 				Cfg:    app.cfg,

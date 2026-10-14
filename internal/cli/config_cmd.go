@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tanzid64/tui-db-manager/internal/bundle"
+	"github.com/tanzid64/tui-db-manager/internal/store"
 	"github.com/tanzid64/tui-db-manager/internal/vault"
 	"golang.org/x/term"
 )
@@ -58,17 +59,36 @@ func newConfigExportCmd() *cobra.Command {
 			targetFile := args[0]
 			includeSecrets, _ := cmd.Flags().GetBool("include-secrets")
 
-			var v *vault.Store
+			var v bundle.VaultStore
 			var transferPass string
 			if includeSecrets {
-				store, err := maybeOpenVault(app.dir)
-				if err != nil {
-					return err
+				if app.store != nil && app.store.IsUnlocked() {
+					v = app.store
+				} else if store.Exists(app.dir) {
+					key := store.ResolveMasterKey(app.dir)
+					if key == "" && term.IsTerminal(int(os.Stdin.Fd())) {
+						fmt.Fprint(os.Stderr, "Enter Master Key: ")
+						if b, err := term.ReadPassword(int(os.Stdin.Fd())); err == nil {
+							fmt.Fprintln(os.Stderr)
+							key = string(b)
+						}
+					}
+					s, err := store.Open(app.dir, key)
+					if err != nil {
+						return fmt.Errorf("open vault database: %w", err)
+					}
+					v = s
+				} else if vault.Exists(app.dir) {
+					s, err := vault.Open(app.dir)
+					if err != nil {
+						return err
+					}
+					v = s
 				}
-				if store == nil {
+
+				if v == nil {
 					return fmt.Errorf("cannot export secrets: vault does not exist")
 				}
-				v = store
 				tp, err := readTransferPassphrase(cmd, "Enter transfer passphrase to encrypt secrets")
 				if err != nil {
 					return err
@@ -128,7 +148,7 @@ func newConfigImportCmd() *cobra.Command {
 
 			overwrite, _ := cmd.Flags().GetBool("yes")
 
-			var v *vault.Store
+			var v bundle.VaultStore
 			var transferPass string
 
 			if len(b.EncryptedSecrets) > 0 {
@@ -138,19 +158,32 @@ func newConfigImportCmd() *cobra.Command {
 				}
 				transferPass = tp
 
-				if !vault.Exists(app.dir) {
-					// Vault doesn't exist yet in target directory; create it.
-					store, err := vault.Create(app.dir)
+				if app.store != nil {
+					v = app.store
+				} else if store.Exists(app.dir) {
+					key := store.ResolveMasterKey(app.dir)
+					s, err := store.Open(app.dir, key)
 					if err != nil {
-						return fmt.Errorf("create local vault: %w", err)
+						return fmt.Errorf("open database: %w", err)
 					}
-					v = store
-				} else {
-					store, err := maybeOpenVault(app.dir)
+					v = s
+				} else if vault.Exists(app.dir) {
+					s, err := vault.Open(app.dir)
 					if err != nil {
 						return err
 					}
-					v = store
+					v = s
+				} else {
+					key := store.ResolveMasterKey(app.dir)
+					if key == "" {
+						key = "dbk-default"
+					}
+					s, err := store.Init(app.dir, key)
+					if err != nil {
+						return fmt.Errorf("create database: %w", err)
+					}
+					_ = store.SaveMasterKeyToEnv(app.dir, key)
+					v = s
 				}
 			}
 
