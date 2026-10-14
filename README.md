@@ -43,6 +43,8 @@ curl -fsSL https://raw.githubusercontent.com/tanzid64/tui-db-manager/main/instal
 go install github.com/tanzid64/tui-db-manager/cmd/dbk@latest
 ```
 
+📖 **Detailed Documentation:** See the [Installation & Upgrade Guide](docs/install-and-upgrade.md) for step-by-step setup and flat-file migration instructions.
+
 ---
 
 ## Quick Start
