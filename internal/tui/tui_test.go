@@ -299,9 +299,9 @@ func TestJobsScreenWizardEnterCompletion(t *testing.T) {
 		t.Fatalf("expected step 3 (Storage & Retention), got %d", screen.wizard.ActiveStep)
 	}
 
-	// Step 3: Storage & Schedule (6 fields)
-	// Fields: 0: storage (select), 1: schedule (select), 2: custom_cron (text), 3: keep_last (text), 4: compress (checkbox), 5: encrypt (checkbox)
-	for i := 0; i < 6; i++ {
+	// Step 3: Storage & Retention (4 fields)
+	// Fields: 0: storage (select), 1: keep_last (text), 2: compress (checkbox), 3: encrypt (checkbox)
+	for i := 0; i < 4; i++ {
 		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	}
 
@@ -403,8 +403,8 @@ func TestJobsScreenWizardLiveDatabaseSelection(t *testing.T) {
 		t.Fatalf("expected step 3, got %d", screen.wizard.ActiveStep)
 	}
 
-	// Press Enter across storage and schedule fields to complete
-	for i := 0; i < 6; i++ {
+	// Press Enter across storage and retention fields to complete (4 fields)
+	for i := 0; i < 4; i++ {
 		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	}
 
@@ -682,15 +682,8 @@ func TestJobsScreenEditJobAndSQLiteWizard(t *testing.T) {
 		t.Fatalf("expected to jump directly to storage step 2, got %d", screen.wizard.ActiveStep)
 	}
 
-	// Advance across storage fields
-	// storage (0) -> enter -> schedule (1)
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	// on schedule: select "Daily at 2:00 AM" (option 7)
-	for i := 0; i < 7; i++ {
-		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
-	}
-	// enter across rest of fields: custom_cron(2), keep_last(3), compress(4), encrypt(5) -> finish!
-	for i := 0; i < 5; i++ {
+	// Advance across storage fields (4 fields)
+	for i := 0; i < 4; i++ {
 		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	}
 
@@ -701,7 +694,7 @@ func TestJobsScreenEditJobAndSQLiteWizard(t *testing.T) {
 		t.Fatalf("expected 1 job, got %d", len(svc.Cfg.Jobs))
 	}
 	j := svc.Cfg.Jobs[0]
-	if j.Name != "sqlite-app" || j.Engine != "sqlite" || j.Conn.Path != "/data/app.db" || j.Schedule != "0 2 * * *" {
+	if j.Name != "sqlite-app" || j.Engine != "sqlite" || j.Conn.Path != "/data/app.db" {
 		t.Fatalf("unexpected sqlite job: %+v", j)
 	}
 
@@ -715,9 +708,6 @@ func TestJobsScreenEditJobAndSQLiteWizard(t *testing.T) {
 	}
 	if screen.wizard.Steps[1].Fields[0].Input.Value() != "/data/app.db" {
 		t.Fatalf("expected pre-populated path '/data/app.db', got %s", screen.wizard.Steps[1].Fields[0].Input.Value())
-	}
-	if screen.wizard.Steps[2].Fields[1].SelectedOpt != 7 {
-		t.Fatalf("expected schedule pre-selected opt 7, got %d", screen.wizard.Steps[2].Fields[1].SelectedOpt)
 	}
 }
 
@@ -773,49 +763,33 @@ func TestNotifyScreenEditNotifier(t *testing.T) {
 	}
 }
 
-func TestJobsScreenCustomCronValidation(t *testing.T) {
+func TestSettingsScreenScheduleCronValidation(t *testing.T) {
 	dir := t.TempDir()
 	svc, err := NewService(dir, "")
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
+	svc.Cfg.Jobs = []config.Job{
+		{Name: "daily-backup", Engine: "mysql"},
+	}
 
-	screen := NewJobsScreen(svc, nil, nil)
+	screen := NewSettingsScreen(svc, nil, nil)
 	screen.SetSize(120, 30)
 
-	// Open wizard
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	// Press Enter on option 0 ("Install Automated Job Schedule")
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if !screen.isWizardOpen {
-		t.Fatalf("expected wizard open")
+		t.Fatalf("expected schedule wizard open")
 	}
 
-	// Step 0: Name and engine
-	screen.wizard.Steps[0].Fields[0].Input.SetValue("cron-job")
-	// Step 0 -> Step 1
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Field 0: job (select) -> press Enter to move to Field 1 (cron text)
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// Step 1: Server connection -> enter through fields
-	for i := 0; i < len(screen.wizard.Steps[1].Fields); i++ {
-		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	}
-
-	// Step 2: Database Name
-	screen.wizard.Steps[2].Fields[0].Input.SetValue("mydb")
+	// Enter invalid 4-field cron
+	screen.wizard.Steps[0].Fields[1].Input.SetValue("1 * * *")
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// Now on Step 3: Storage & Schedule
-	// Set schedule option to "Custom Cron Expression" (index 10)
-	screen.wizard.Steps[3].Fields[1].SelectedOpt = 10
-	// Set invalid 4-field cron
-	screen.wizard.Steps[3].Fields[2].Input.SetValue("1 * * *")
-
-	// Advance through storage and schedule fields
-	for i := 0; i < len(screen.wizard.Steps[3].Fields); i++ {
-		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	}
-
-	// Validation must prevent wizard from closing with 4-field cron
+	// Wizard should stay open and show error
 	if !screen.isWizardOpen {
 		t.Fatalf("expected wizard to stay open due to invalid 4-field cron")
 	}
@@ -824,16 +798,11 @@ func TestJobsScreenCustomCronValidation(t *testing.T) {
 	}
 
 	// Now fix to valid 5-field cron
-	screen.wizard.Steps[3].Fields[2].Input.SetValue("0 2 * * *")
-	for i := 0; i < len(screen.wizard.Steps[3].Fields); i++ {
-		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	}
+	screen.wizard.Steps[0].Fields[1].Input.SetValue("0 2 * * *")
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	if screen.isWizardOpen {
 		t.Fatalf("expected wizard to complete and close with valid 5-field cron, err: %s", screen.wizard.ErrMessage)
-	}
-	if len(svc.Cfg.Jobs) != 1 || svc.Cfg.Jobs[0].Schedule != "0 2 * * *" {
-		t.Fatalf("expected job schedule '0 2 * * *', got %+v", svc.Cfg.Jobs)
 	}
 }
 

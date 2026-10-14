@@ -146,64 +146,6 @@ func (s JobsScreen) Update(msg tea.Msg) (JobsScreen, tea.Cmd) {
 	return s, nil
 }
 
-func parseScheduleSelection(freqOption, customCron string) string {
-	switch freqOption {
-	case "Every 15 minutes":
-		return "*/15 * * * *"
-	case "Every 30 minutes":
-		return "*/30 * * * *"
-	case "Hourly":
-		return "0 * * * *"
-	case "Every 6 hours":
-		return "0 */6 * * *"
-	case "Every 12 hours":
-		return "0 */12 * * *"
-	case "Daily at midnight (00:00)":
-		return "0 0 * * *"
-	case "Daily at 2:00 AM (02:00)":
-		return "0 2 * * *"
-	case "Weekly on Sunday (00:00)":
-		return "0 0 * * 0"
-	case "Monthly (1st of month)":
-		return "0 0 1 * *"
-	case "Custom Cron Expression":
-		return strings.TrimSpace(customCron)
-	default:
-		if strings.TrimSpace(customCron) != "" {
-			return strings.TrimSpace(customCron)
-		}
-		return ""
-	}
-}
-
-func matchSchedulePreset(cron string) (string, int, string) {
-	cron = strings.TrimSpace(cron)
-	if cron == "" {
-		return "Manual only (No schedule)", 0, ""
-	}
-	switch cron {
-	case "*/15 * * * *":
-		return "Every 15 minutes", 1, ""
-	case "*/30 * * * *":
-		return "Every 30 minutes", 2, ""
-	case "0 * * * *":
-		return "Hourly", 3, ""
-	case "0 */6 * * *":
-		return "Every 6 hours", 4, ""
-	case "0 */12 * * *":
-		return "Every 12 hours", 5, ""
-	case "0 0 * * *":
-		return "Daily at midnight (00:00)", 6, ""
-	case "0 2 * * *":
-		return "Daily at 2:00 AM (02:00)", 7, ""
-	case "0 0 * * 0":
-		return "Weekly on Sunday (00:00)", 8, ""
-	case "0 0 1 * *":
-		return "Monthly (1st of month)", 9, ""
-	default:
-		return "Custom Cron Expression", 10, cron
-	}
-}
 
 func (s *JobsScreen) openJobWizard(existing *config.Job) {
 	storageNames := make([]string, 0)
@@ -218,8 +160,6 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 	keepLastStr := "7"
 	compressChecked := true
 	encryptChecked := false
-	freqSelectedIdx := 0
-	customCronVal := ""
 
 	if existing != nil {
 		s.isEditing = true
@@ -235,33 +175,16 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 		}
 		compressChecked = existing.Compress
 		encryptChecked = existing.Encrypt
-		_, freqSelectedIdx, customCronVal = matchSchedulePreset(existing.Schedule)
 	} else {
 		s.isEditing = false
 		s.editingJobName = ""
 	}
 
-	freqOptions := []string{
-		"Manual only (No schedule)",
-		"Every 15 minutes",
-		"Every 30 minutes",
-		"Hourly",
-		"Every 6 hours",
-		"Every 12 hours",
-		"Daily at midnight (00:00)",
-		"Daily at 2:00 AM (02:00)",
-		"Weekly on Sunday (00:00)",
-		"Monthly (1st of month)",
-		"Custom Cron Expression",
-	}
-
 	storageStep := WizardStep{
-		Title:       "Storage & Schedule",
-		Description: "Target storage destination, automated run schedule, and retention count",
+		Title:       "Storage & Retention",
+		Description: "Target storage destination, retention count, and compression/encryption",
 		Fields: []WizardField{
 			{Key: "storage", Label: "Storage Destination", Type: FieldSelect, Options: storageNames, SelectedOpt: selectedStorageIdx},
-			{Key: "schedule", Label: "Run Schedule", Type: FieldSelect, Options: freqOptions, SelectedOpt: freqSelectedIdx},
-			{Key: "custom_cron", Label: "Custom Cron (if selected)", Placeholder: "0 2 * * *", Value: customCronVal, Type: FieldText},
 			{Key: "keep_last", Label: "Keep Last Backups", Placeholder: "7", Value: keepLastStr, Type: FieldText},
 			{Key: "compress", Label: "Gzip Compress", Type: FieldCheckbox, Checked: compressChecked},
 			{Key: "encrypt", Label: "Age Encrypt", Type: FieldCheckbox, Checked: encryptChecked},
@@ -507,16 +430,6 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 				return errors.New("database name cannot be empty")
 			}
 		}
-
-		if vals["schedule"] == "Custom Cron Expression" {
-			cron := strings.TrimSpace(vals["custom_cron"])
-			if cron == "" {
-				return errors.New("custom cron expression cannot be empty")
-			}
-			if len(strings.Fields(cron)) != 5 {
-				return fmt.Errorf("custom cron %q must have 5 fields (minute hour day month weekday), e.g. '0 2 * * *'", cron)
-			}
-		}
 		return nil
 	}
 
@@ -553,7 +466,15 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 		host = "127.0.0.1"
 	}
 
-	sched := parseScheduleSelection(vals["schedule"], vals["custom_cron"])
+	sched := ""
+	if s.isEditing {
+		for _, existingJob := range s.svc.Cfg.Jobs {
+			if existingJob.Name == s.editingJobName {
+				sched = existingJob.Schedule
+				break
+			}
+		}
+	}
 
 	job := config.Job{
 		Name:   name,
@@ -640,11 +561,6 @@ func (s JobsScreen) View() string {
 				featStr = fmt.Sprintf("[%s]", strings.Join(features, "+"))
 			}
 
-			schedStr := ""
-			if j.Schedule != "" {
-				schedStr = styleWarning.Render(fmt.Sprintf("⏰ %s", j.Schedule))
-			}
-
 			lastRun := globalHistory.LastForJob(j.Name)
 			statusBadge := styleHelp.Render("(Never run)")
 			if lastRun != nil {
@@ -656,12 +572,11 @@ func (s JobsScreen) View() string {
 			}
 
 			details := fmt.Sprintf("(%s → %s, keep %d)", j.Engine, j.Storage, j.Retention.KeepLast)
-			line := fmt.Sprintf("%s%s  %s  %s  %s  %s\n",
+			line := fmt.Sprintf("%s%s  %s  %s  %s\n",
 				prefix,
 				itemStyle.Render(j.Name),
 				styleSubtitle.Render(details),
 				featStr,
-				schedStr,
 				statusBadge,
 			)
 			b.WriteString(line)
