@@ -8,7 +8,6 @@ import (
 
 func TestSecretSetLsRm(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("DBK_PASSPHRASE", "pw")
 
 	run := func(args ...string) (string, error) {
 		root := NewRootCmd()

@@ -134,16 +134,12 @@ func resolveIdentity(v *vault.Store) func(config.Job) (string, error) {
 }
 
 // maybeOpenVault opens the vault if it exists, else returns nil (jobs may have
-// no secrets, e.g. sqlite). Passphrase comes from env/file/prompt.
-func maybeOpenVault(dir, passFile string, interactive bool) (*vault.Store, error) {
+// no secrets, e.g. sqlite).
+func maybeOpenVault(dir string) (*vault.Store, error) {
 	if !vault.Exists(dir) {
 		return nil, nil
 	}
-	pass, err := vault.ReadPassphrase(dir, passFile, interactive)
-	if err != nil {
-		return nil, err
-	}
-	return vault.Open(dir, pass)
+	return vault.Open(dir)
 }
 
 func errUnknownJob(name string) error      { return fmt.Errorf("job %q not found", name) }

@@ -142,24 +142,16 @@ func TestAppNavigationLifecycle(t *testing.T) {
 		t.Fatalf("NewService: %v", err)
 	}
 
-	// Initially no vault: starts on screenUnlock
+	// Starts directly on screenMainMenu without any unlock screen
 	app := NewApp(svc)
-	if app.currentScreen != screenUnlock {
-		t.Fatalf("expected screenUnlock on initial launch without vault, got %d", app.currentScreen)
+	if app.currentScreen != screenMainMenu {
+		t.Fatalf("expected screenMainMenu on initial launch, got %d", app.currentScreen)
 	}
 
-	// Check UnlockScreen view
+	// Check view is non-empty
 	view := app.View()
 	if view == "" {
 		t.Fatalf("expected non-empty view")
-	}
-
-	// Create vault via unlock screen
-	app.unlockScreen.input.SetValue("test-passphrase-123")
-	app.Update(tea.KeyMsg{Type: tea.KeyEnter})
-
-	if app.currentScreen != screenMainMenu {
-		t.Fatalf("expected transition to screenMainMenu after unlocking, got %d", app.currentScreen)
 	}
 
 	// Navigate to Jobs screen (menu item 0)
@@ -187,18 +179,13 @@ func TestAppNavigationLifecycle(t *testing.T) {
 		t.Fatalf("expected screenMainMenu, got %d", app.currentScreen)
 	}
 
-	// Change passphrase via service
-	if err := svc.ChangePassphrase("new-passphrase-456"); err != nil {
-		t.Fatalf("ChangePassphrase: %v", err)
-	}
-
-	// Verify we can re-open vault with new passphrase
+	// Verify second service instance opens vault automatically
 	svc2, err := NewService(dir, "")
 	if err != nil {
 		t.Fatalf("NewService 2: %v", err)
 	}
-	if err := svc2.UnlockVault("new-passphrase-456"); err != nil {
-		t.Fatalf("UnlockVault with new pass failed: %v", err)
+	if !svc2.IsVaultUnlocked() {
+		t.Fatalf("expected vault to be unlocked automatically")
 	}
 }
 

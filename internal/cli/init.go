@@ -9,7 +9,7 @@ import (
 func newInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
-		Short: "Create the config directory and encrypted vault",
+		Short: "Create the config directory and secrets vault",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			override, _ := cmd.Flags().GetString("config")
 			dir, err := config.Dir(override)
@@ -26,12 +26,7 @@ func newInitCmd() *cobra.Command {
 				return err
 			}
 			if !vault.Exists(dir) {
-				passFile, _ := cmd.Flags().GetString("passphrase-file")
-				pass, err := vault.ReadPassphrase(dir, passFile, true)
-				if err != nil {
-					return err
-				}
-				s, err := vault.Create(dir, pass)
+				s, err := vault.Create(dir)
 				if err != nil {
 					return err
 				}

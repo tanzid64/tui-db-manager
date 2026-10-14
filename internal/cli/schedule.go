@@ -3,11 +3,9 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/tanzid64/tui-db-manager/internal/schedule"
-	"github.com/tanzid64/tui-db-manager/internal/vault"
 )
 
 var defaultScheduler = schedule.DetectScheduler()
@@ -46,13 +44,6 @@ func newScheduleInstallCmd() *cobra.Command {
 
 			passFile, _ := cmd.Flags().GetString("passphrase-file")
 			pathOverride, _ := cmd.Flags().GetString("path")
-
-			// A scheduled job runs unattended with no TTY. If a vault exists,
-			// refuse to install unless a non-interactive passphrase source is
-			// available, so the failure surfaces now instead of at run time.
-			if vault.Exists(app.dir) && passFile == "" && os.Getenv("DBK_PASSPHRASE") == "" {
-				return fmt.Errorf("a vault exists for this config but no passphrase source is set: pass --passphrase-file or export DBK_PASSPHRASE so the scheduled job can unlock it unattended")
-			}
 
 			sched := defaultScheduler
 			opts := schedule.InstallOptions{

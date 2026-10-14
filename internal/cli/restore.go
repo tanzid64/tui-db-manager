@@ -23,8 +23,7 @@ func newRestoreCmd() *cobra.Command {
 			at, _ := cmd.Flags().GetString("at")
 			to, _ := cmd.Flags().GetString("to")
 			yes, _ := cmd.Flags().GetBool("yes")
-			passFile, _ := cmd.Flags().GetString("passphrase-file")
-			v, err := maybeOpenVault(app.dir, passFile, true)
+			v, err := maybeOpenVault(app.dir)
 			if err != nil {
 				return err
 			}

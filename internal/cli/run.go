@@ -22,8 +22,7 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			passFile, _ := cmd.Flags().GetString("passphrase-file")
-			v, err := maybeOpenVault(app.dir, passFile, true)
+			v, err := maybeOpenVault(app.dir)
 			if err != nil {
 				return err
 			}

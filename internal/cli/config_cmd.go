@@ -61,8 +61,7 @@ func newConfigExportCmd() *cobra.Command {
 			var v *vault.Store
 			var transferPass string
 			if includeSecrets {
-				passFile := passFileOf(cmd)
-				store, err := maybeOpenVault(app.dir, passFile, true)
+				store, err := maybeOpenVault(app.dir)
 				if err != nil {
 					return err
 				}
@@ -139,21 +138,15 @@ func newConfigImportCmd() *cobra.Command {
 				}
 				transferPass = tp
 
-				passFile := passFileOf(cmd)
 				if !vault.Exists(app.dir) {
 					// Vault doesn't exist yet in target directory; create it.
-					// Use DBK_PASSPHRASE, passFile, or prompt.
-					pass, err := vault.ReadPassphrase(app.dir, passFile, true)
-					if err != nil {
-						return fmt.Errorf("initialize local vault: %w", err)
-					}
-					store, err := vault.Create(app.dir, pass)
+					store, err := vault.Create(app.dir)
 					if err != nil {
 						return fmt.Errorf("create local vault: %w", err)
 					}
 					v = store
 				} else {
-					store, err := maybeOpenVault(app.dir, passFile, true)
+					store, err := maybeOpenVault(app.dir)
 					if err != nil {
 						return err
 					}

@@ -2,6 +2,7 @@ package vault
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -9,41 +10,64 @@ import (
 
 type Store struct {
 	path    string
-	key     []byte
-	params  KDFParams
 	secrets map[string]string
 }
 
-func Path(dir string) string { return filepath.Join(dir, "secrets.enc") }
+func Path(dir string) string { return filepath.Join(dir, "secrets.json") }
 
 func Exists(dir string) bool {
-	_, err := os.Stat(Path(dir))
+	if _, err := os.Stat(Path(dir)); err == nil {
+		return true
+	}
+	_, err := os.Stat(filepath.Join(dir, "secrets.enc"))
 	return err == nil
 }
 
-func Create(dir, passphrase string) (*Store, error) {
-	p := DefaultKDFParams()
+func Create(dir string) (*Store, error) {
 	return &Store{
 		path:    Path(dir),
-		key:     DeriveKey(passphrase, p),
-		params:  p,
 		secrets: map[string]string{},
 	}, nil
 }
 
-func Open(dir, passphrase string) (*Store, error) {
-	blob, err := os.ReadFile(Path(dir))
-	if err != nil {
+func Open(dir string) (*Store, error) {
+	p := Path(dir)
+	blob, err := os.ReadFile(p)
+	if err == nil {
+		var secrets map[string]string
+		if err := json.Unmarshal(blob, &secrets); err != nil {
+			return nil, fmt.Errorf("corrupt secrets file %s: %w", p, err)
+		}
+		if secrets == nil {
+			secrets = map[string]string{}
+		}
+		return &Store{path: p, secrets: secrets}, nil
+	}
+	if !os.IsNotExist(err) {
 		return nil, err
 	}
-	// The key needs the salt from the header, so read the header params first.
-	// They are not trusted until open() verifies the AEAD tag.
+
+	// Legacy migration: if secrets.enc exists and DBK_PASSPHRASE is provided, migrate it.
+	legacyPath := filepath.Join(dir, "secrets.enc")
+	if encBlob, encErr := os.ReadFile(legacyPath); encErr == nil {
+		if pass := os.Getenv("DBK_PASSPHRASE"); pass != "" {
+			if s, migErr := openLegacy(p, encBlob, pass); migErr == nil {
+				_ = s.Save()
+				return s, nil
+			}
+		}
+	}
+
+	return nil, err
+}
+
+func openLegacy(targetPath string, blob []byte, passphrase string) (*Store, error) {
 	p, err := peekParams(blob)
 	if err != nil {
 		return nil, err
 	}
 	key := DeriveKey(passphrase, p)
-	pt, gotP, err := open(key, blob)
+	pt, _, err := open(key, blob)
 	if err != nil {
 		return nil, err
 	}
@@ -51,11 +75,17 @@ func Open(dir, passphrase string) (*Store, error) {
 	if err := json.Unmarshal(pt, &secrets); err != nil {
 		return nil, err
 	}
-	return &Store{path: Path(dir), key: key, params: gotP, secrets: secrets}, nil
+	if secrets == nil {
+		secrets = map[string]string{}
+	}
+	return &Store{path: targetPath, secrets: secrets}, nil
 }
 
 // Keys returns the secret keys (not values), sorted.
 func (s *Store) Keys() []string {
+	if s == nil || s.secrets == nil {
+		return nil
+	}
 	out := make([]string, 0, len(s.secrets))
 	for k := range s.secrets {
 		out = append(out, k)
@@ -64,12 +94,32 @@ func (s *Store) Keys() []string {
 	return out
 }
 
-func (s *Store) Get(key string) (string, bool) { v, ok := s.secrets[key]; return v, ok }
-func (s *Store) Set(key, val string)           { s.secrets[key] = val }
-func (s *Store) Delete(key string)             { delete(s.secrets, key) }
+func (s *Store) Get(key string) (string, bool) {
+	if s == nil || s.secrets == nil {
+		return "", false
+	}
+	v, ok := s.secrets[key]
+	return v, ok
+}
+
+func (s *Store) Set(key, val string) {
+	if s.secrets == nil {
+		s.secrets = map[string]string{}
+	}
+	s.secrets[key] = val
+}
+
+func (s *Store) Delete(key string) {
+	if s.secrets != nil {
+		delete(s.secrets, key)
+	}
+}
 
 // All returns a copy of all secrets stored in the vault.
 func (s *Store) All() map[string]string {
+	if s == nil || s.secrets == nil {
+		return map[string]string{}
+	}
 	out := make(map[string]string, len(s.secrets))
 	for k, v := range s.secrets {
 		out[k] = v
@@ -79,6 +129,9 @@ func (s *Store) All() map[string]string {
 
 // Merge merges secrets into the store. If overwrite is true, existing keys are overwritten.
 func (s *Store) Merge(secrets map[string]string, overwrite bool) (added, updated, skipped int) {
+	if s.secrets == nil {
+		s.secrets = map[string]string{}
+	}
 	for k, v := range secrets {
 		if _, exists := s.secrets[k]; exists {
 			if overwrite {
@@ -125,25 +178,17 @@ func ImportDecrypt(transferPassphrase string, blob []byte) (map[string]string, e
 }
 
 func (s *Store) Save() error {
-	pt, err := json.Marshal(s.secrets)
+	pt, err := json.MarshalIndent(s.secrets, "", "  ")
 	if err != nil {
 		return err
 	}
-	blob, err := seal(s.key, pt, s.params)
-	if err != nil {
+	dir := filepath.Dir(s.path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, blob, 0o600); err != nil {
+	if err := os.WriteFile(tmp, pt, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, s.path)
-}
-
-// ChangePassphrase derives a new encryption key with fresh KDF params and re-saves the store.
-func (s *Store) ChangePassphrase(newPassphrase string) error {
-	p := DefaultKDFParams()
-	s.key = DeriveKey(newPassphrase, p)
-	s.params = p
-	return s.Save()
 }

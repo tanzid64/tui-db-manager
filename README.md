@@ -21,7 +21,7 @@
 - **Automated Scheduling:** Native OS scheduling via `systemd user timers` (Linux), `crontab` (Linux/macOS), or `Task Scheduler` (Windows) with automatic environment detection.
 - **Real-Time Notifications:** Instant alerts on backup success or failure via **Telegram Bot API**, **Email (SMTP with STARTTLS/TLS)**, or **Generic Webhooks**.
 - **Hardened Security Model:**
-  - Credentials stored in an encrypted vault (`secrets.enc`) locked with **Argon2id** key derivation and **XChaCha20-Poly1305** AEAD encryption.
+  - Credentials stored in a dedicated local secrets vault (`secrets.json`) with restricted `0600` file permissions, decoupled from `config.yaml`.
   - Zero password leakage: credentials are never passed via command-line arguments (preventing `ps` leakage) and automatically redacted from logs.
   - Support for decoupled secret references (`env:VAR_NAME` and `file:/path/to/secret`).
 - **Portable Config Bundles:** Single-file YAML/JSON configuration export and import with transfer-passphrase re-encryption for safe transmission across untrusted networks.
@@ -55,12 +55,12 @@ Simply run `dbk` in any terminal:
 dbk
 ```
 
-When opened for the first time, `dbk` will prompt you to set a master passphrase for your encrypted secrets vault. From the main menu, you can:
+When opened, `dbk` launches directly into the interactive dashboard with no master passphrase required. From the main menu, you can:
 - **Jobs:** Add, configure, test, and trigger database backups.
 - **Storage:** Connect and verify local directories, S3 buckets, or Google Drive folders.
 - **Notifications:** Set up Telegram bots, SMTP email alerts, or HTTP webhooks.
 - **Restore:** Browse historical backups from storage and restore with safety confirmation guards.
-- **Settings:** Change master passphrase, install system schedules, or export/import configuration bundles.
+- **Settings:** Install system schedules, export/import configuration bundles, or check for updates.
 - **Logs / History:** Inspect recent runs, execution elapsed times, archive sizes, and error details.
 
 ### 2. Headless Automation (CLI)
@@ -178,7 +178,7 @@ notifiers:
 
 ## Security Model
 
-1. **Vault Encryption:** Secrets (`secrets.enc`) are encrypted using `XChaCha20-Poly1305` AEAD with keys derived via `Argon2id` (memory: 64MB, iterations: 3, parallelism: 4).
+1. **Isolated Secrets Vault:** Secrets (`secrets.json`) are stored with strict `0600` file permissions separate from configuration, removing passphrase barriers for automated cron and systemd execution.
 2. **At-Rest Protection:** Dump streams can be encrypted on-the-fly using `age` (X25519) before hitting the network, ensuring zero exposure to third-party cloud providers.
 3. **Safe Memory & Execution:** DB passwords are piped through standard input or injected via temporary scoped files with `0600` permissions. Process arguments never contain credentials.
 4. **Log Redaction:** All logger sinks pass through a string scrubbing filter that automatically redacts known secrets and tokens.

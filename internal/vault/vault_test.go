@@ -1,13 +1,14 @@
 package vault
 
 import (
-	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
 func TestCreateSetSaveOpen(t *testing.T) {
 	dir := t.TempDir()
-	s, err := Create(dir, "pw")
+	s, err := Create(dir)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -16,7 +17,16 @@ func TestCreateSetSaveOpen(t *testing.T) {
 		t.Fatalf("save: %v", err)
 	}
 
-	reopened, err := Open(dir, "pw")
+	// Verify secrets.json permissions are 0600
+	info, err := os.Stat(filepath.Join(dir, "secrets.json"))
+	if err != nil {
+		t.Fatalf("stat secrets.json: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("expected permissions 0600, got %o", perm)
+	}
+
+	reopened, err := Open(dir)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -26,26 +36,9 @@ func TestCreateSetSaveOpen(t *testing.T) {
 	}
 }
 
-func TestOpenWrongPassphrase(t *testing.T) {
-	dir := t.TempDir()
-	s, _ := Create(dir, "right")
-	_ = s.Save()
-	if _, err := Open(dir, "wrong"); !errors.Is(err, ErrBadPassphrase) {
-		t.Fatalf("expected ErrBadPassphrase, got %v", err)
-	}
-}
-
-func TestReadPassphraseFromEnv(t *testing.T) {
-	t.Setenv("DBK_PASSPHRASE", "fromenv")
-	got, err := ReadPassphrase(t.TempDir(), "", false)
-	if err != nil || got != "fromenv" {
-		t.Fatalf("env passphrase: got %q err %v", got, err)
-	}
-}
-
 func TestExportImportDecrypt(t *testing.T) {
 	dir := t.TempDir()
-	s, err := Create(dir, "master-pw")
+	s, err := Create(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +68,7 @@ func TestExportImportDecrypt(t *testing.T) {
 
 func TestStoreMerge(t *testing.T) {
 	dir := t.TempDir()
-	s, err := Create(dir, "pw")
+	s, err := Create(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,7 +17,7 @@ func TestConfigExportImportEndToEnd(t *testing.T) {
 	t.Setenv("DBK_TRANSFER_PASSPHRASE", "transfer-pw-123")
 
 	// 1. Initialize src vault and config
-	v, err := vault.Create(srcDir, "master-secret-pw")
+	v, err := vault.Create(srcDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestConfigExportImportEndToEnd(t *testing.T) {
 		t.Fatalf("dest config mismatch: %+v", destCfg)
 	}
 
-	destVault, err := vault.Open(destDir, "master-secret-pw")
+	destVault, err := vault.Open(destDir)
 	if err != nil {
 		t.Fatalf("open dest vault: %v", err)
 	}

@@ -10,8 +10,7 @@ import (
 type SettingsOption int
 
 const (
-	optChangePassphrase SettingsOption = iota
-	optScheduleInstall
+	optScheduleInstall SettingsOption = iota
 	optScheduleRemove
 	optExportConfig
 	optImportConfig
@@ -74,7 +73,7 @@ func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		optionsCount := 6
+		optionsCount := 5
 		switch msg.String() {
 		case "esc":
 			if s.onBack != nil {
@@ -103,8 +102,6 @@ func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
 func (s *SettingsScreen) triggerOption(opt SettingsOption) tea.Cmd {
 	s.activeOpt = opt
 	switch opt {
-	case optChangePassphrase:
-		s.openChangePassphraseWizard()
 	case optScheduleInstall:
 		s.openScheduleInstallWizard()
 	case optScheduleRemove:
@@ -119,21 +116,6 @@ func (s *SettingsScreen) triggerOption(opt SettingsOption) tea.Cmd {
 		}
 	}
 	return nil
-}
-
-func (s *SettingsScreen) openChangePassphraseWizard() {
-	steps := []WizardStep{
-		{
-			Title:       "Change Master Passphrase",
-			Description: "Set a new master passphrase for the encrypted vault",
-			Fields: []WizardField{
-				{Key: "new_pass", Label: "New Passphrase", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
-				{Key: "confirm_pass", Label: "Confirm Passphrase", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
-			},
-		},
-	}
-	s.wizard = NewWizard("Vault Security", steps, nil, nil)
-	s.isWizardOpen = true
 }
 
 func (s *SettingsScreen) openScheduleInstallWizard() {
@@ -217,23 +199,6 @@ func (s *SettingsScreen) openImportWizard() {
 
 func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map[string]string) {
 	switch opt {
-	case optChangePassphrase:
-		p1 := vals["new_pass"]
-		p2 := vals["confirm_pass"]
-		if p1 == "" {
-			s.statusMsg = styleError.Render("Passphrase cannot be empty")
-			return
-		}
-		if p1 != p2 {
-			s.statusMsg = styleError.Render("Passphrases do not match")
-			return
-		}
-		if err := s.svc.ChangePassphrase(p1); err != nil {
-			s.statusMsg = styleError.Render("✖ Change passphrase failed: " + err.Error())
-		} else {
-			s.statusMsg = styleSuccess.Render("✔ Master passphrase changed successfully!")
-		}
-
 	case optScheduleInstall:
 		job := vals["job"]
 		cron := vals["cron"]
@@ -297,14 +262,13 @@ func (s SettingsScreen) View() string {
 	var b strings.Builder
 	b.WriteString(styleTitle.Render("dbk — System Settings"))
 	b.WriteString("\n")
-	b.WriteString(styleSubtitle.Render("Manage encryption vault, automated schedules, and portable bundles"))
+	b.WriteString(styleSubtitle.Render("Manage automated schedules, portable bundles, and system updates"))
 	b.WriteString("\n\n")
 
 	options := []struct {
 		title string
 		desc  string
 	}{
-		{"Change Vault Master Passphrase", "Re-encrypt the secret vault under a new master passphrase"},
 		{"Install Automated Job Schedule", "Register unattended backup timer with OS scheduler (systemd/cron/Task Scheduler)"},
 		{"Remove Automated Job Schedule", "Unregister scheduled timer from OS scheduler"},
 		{"Export Configuration Bundle", "Export portable YAML/JSON config bundle with optional transfer-passphrase secrets"},

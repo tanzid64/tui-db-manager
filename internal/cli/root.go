@@ -20,12 +20,12 @@ func NewRootCmd() *cobra.Command {
 				return cmd.Help()
 			}
 			cfgDir, _ := cmd.Flags().GetString("config")
-			passFile, _ := cmd.Flags().GetString("passphrase-file")
-			return tui.Run(cfgDir, passFile)
+			return tui.Run(cfgDir, "")
 		},
 	}
 	root.PersistentFlags().String("config", "", "config directory (default: OS config dir + /dbk)")
-	root.PersistentFlags().String("passphrase-file", "", "file containing the vault passphrase")
+	root.PersistentFlags().String("passphrase-file", "", "deprecated: vault password has been removed")
+	_ = root.PersistentFlags().MarkHidden("passphrase-file")
 	root.PersistentFlags().Bool("yes", false, "assume yes for confirmations")
 	root.PersistentFlags().Bool("json", false, "machine-readable output where supported")
 	root.AddCommand(newVersionCmd())

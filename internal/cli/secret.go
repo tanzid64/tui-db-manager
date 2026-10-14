@@ -23,16 +23,11 @@ func openOrCreateVault(cmd *cobra.Command) (string, *vault.Store, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	passFile, _ := cmd.Flags().GetString("passphrase-file")
-	pass, err := vault.ReadPassphrase(dir, passFile, true)
-	if err != nil {
-		return "", nil, err
-	}
 	if vault.Exists(dir) {
-		s, err := vault.Open(dir, pass)
+		s, err := vault.Open(dir)
 		return dir, s, err
 	}
-	s, err := vault.Create(dir, pass)
+	s, err := vault.Create(dir)
 	return dir, s, err
 }
 

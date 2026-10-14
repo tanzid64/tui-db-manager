@@ -14,8 +14,7 @@ import (
 type screenID int
 
 const (
-	screenUnlock screenID = iota
-	screenMainMenu
+	screenMainMenu screenID = iota
 	screenJobs
 	screenStorage
 	screenNotifications
@@ -41,7 +40,6 @@ type App struct {
 	width         int
 	height        int
 
-	unlockScreen   UnlockScreen
 	menuScreen     MenuScreen
 	jobsScreen     JobsScreen
 	storageScreen  StorageScreen
@@ -59,13 +57,9 @@ type App struct {
 
 func NewApp(svc *Service) *App {
 	app := &App{
-		svc: svc,
+		svc:           svc,
+		currentScreen: screenMainMenu,
 	}
-
-	app.unlockScreen = NewUnlockScreen(svc, func() tea.Cmd {
-		app.currentScreen = screenMainMenu
-		return nil
-	})
 
 	app.menuScreen = NewMenuScreen(func(index int) tea.Cmd {
 		switch index {
@@ -104,24 +98,11 @@ func NewApp(svc *Service) *App {
 	})
 	app.logsScreen = NewLogsScreen(toMenu)
 
-	// Check if vault is already unlocked via env/passfile, or if no vault exists yet
-	if err := svc.TryAutoUnlock(); err == nil && svc.IsVaultUnlocked() {
-		app.currentScreen = screenMainMenu
-	} else if !svc.HasVault() {
-		app.currentScreen = screenUnlock
-	} else {
-		app.currentScreen = screenUnlock
-	}
-
 	return app
 }
 
 func (a *App) Init() tea.Cmd {
-	cmds := []tea.Cmd{a.checkUpdateCmd(false)}
-	if a.currentScreen == screenUnlock {
-		cmds = append(cmds, a.unlockScreen.Init())
-	}
-	return tea.Batch(cmds...)
+	return a.checkUpdateCmd(false)
 }
 
 func (a *App) checkUpdateCmd(force bool) tea.Cmd {
@@ -162,7 +143,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
-		a.unlockScreen.SetSize(msg.Width, msg.Height)
 		a.menuScreen.SetSize(msg.Width, msg.Height)
 		a.jobsScreen.SetSize(msg.Width, msg.Height)
 		a.storageScreen.SetSize(msg.Width, msg.Height)
@@ -252,8 +232,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	switch a.currentScreen {
-	case screenUnlock:
-		a.unlockScreen, cmd = a.unlockScreen.Update(msg)
 	case screenMainMenu:
 		a.menuScreen, cmd = a.menuScreen.Update(msg)
 	case screenJobs:
@@ -279,8 +257,6 @@ func (a *App) View() string {
 		body = a.renderUpdateModal()
 	} else {
 		switch a.currentScreen {
-		case screenUnlock:
-			body = a.unlockScreen.View()
 		case screenMainMenu:
 			body = a.menuScreen.View()
 		case screenJobs:
@@ -305,12 +281,7 @@ func (a *App) View() string {
 	}
 	header := RenderHeader(headerText, a.width)
 
-	var footer string
-	if a.svc.IsVaultUnlocked() {
-		footer = styleHelp.Render(" [Vault: Unlocked] ")
-	} else {
-		footer = styleWarning.Render(" [Vault: Locked] ")
-	}
+	footer := styleHelp.Render(" [Vault: Ready] ")
 
 	view := lipgloss.JoinVertical(lipgloss.Left, header, "\n", body, "\n", footer)
 	return view

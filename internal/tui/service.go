@@ -23,12 +23,11 @@ import (
 )
 
 type Service struct {
-	ConfigDir  string
-	PassFile   string
-	Cfg        *config.Config
-	Vault      *vault.Store
-	passphrase string
-	Log        *logutil.Logger
+	ConfigDir string
+	PassFile  string
+	Cfg       *config.Config
+	Vault     *vault.Store
+	Log       *logutil.Logger
 }
 
 func NewService(configDir, passFile string) (*Service, error) {
@@ -43,6 +42,16 @@ func NewService(configDir, passFile string) (*Service, error) {
 	}
 	globalHistory = history.New(filepath.Join(dir, "history.jsonl"))
 	_ = s.ReloadConfig()
+	if vault.Exists(dir) {
+		if v, err := vault.Open(dir); err == nil {
+			s.Vault = v
+		}
+	} else {
+		if v, err := vault.Create(dir); err == nil {
+			_ = v.Save()
+			s.Vault = v
+		}
+	}
 	return s, nil
 }
 
@@ -84,45 +93,32 @@ func (s *Service) IsVaultUnlocked() bool {
 }
 
 func (s *Service) TryAutoUnlock() error {
-	if !s.HasVault() {
-		return nil
+	if s.Vault == nil && vault.Exists(s.ConfigDir) {
+		v, err := vault.Open(s.ConfigDir)
+		if err != nil {
+			return err
+		}
+		s.Vault = v
 	}
-	pass, err := vault.ReadPassphrase(s.ConfigDir, s.PassFile, false)
-	if err != nil {
-		return err
-	}
-	return s.UnlockVault(pass)
-}
-
-func (s *Service) UnlockVault(passphrase string) error {
-	v, err := vault.Open(s.ConfigDir, passphrase)
-	if err != nil {
-		return err
-	}
-	s.Vault = v
-	s.passphrase = passphrase
 	return nil
 }
 
-func (s *Service) CreateVault(passphrase string) error {
-	v, err := vault.Create(s.ConfigDir, passphrase)
+func (s *Service) UnlockVault(_ ...string) error {
+	v, err := vault.Open(s.ConfigDir)
 	if err != nil {
 		return err
 	}
 	s.Vault = v
-	s.passphrase = passphrase
 	return nil
 }
 
-func (s *Service) ChangePassphrase(newPass string) error {
-	if s.Vault == nil {
-		return fmt.Errorf("vault is locked")
-	}
-	if err := s.Vault.ChangePassphrase(newPass); err != nil {
+func (s *Service) CreateVault(_ ...string) error {
+	v, err := vault.Create(s.ConfigDir)
+	if err != nil {
 		return err
 	}
-	s.passphrase = newPass
-	return nil
+	s.Vault = v
+	return s.Vault.Save()
 }
 
 func (s *Service) BuildBackend(ctx context.Context, sc config.StorageConfig) (storage.Backend, error) {

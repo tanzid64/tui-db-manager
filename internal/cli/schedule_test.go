@@ -127,9 +127,8 @@ jobs:
 	}
 }
 
-// A scheduled job runs unattended with no TTY, so when a vault exists the
-// install must refuse unless a non-interactive passphrase source is given.
-func TestScheduleInstallRequiresPassphraseWhenVaultExists(t *testing.T) {
+// When a vault exists, schedule install proceeds unattended without requiring a passphrase.
+func TestScheduleInstallSucceedsWithoutPassphraseWhenVaultExists(t *testing.T) {
 	mock := &mockScheduler{targetName: "mock-timer"}
 	orig := defaultScheduler
 	defaultScheduler = mock
@@ -148,42 +147,22 @@ jobs:
 	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(cfgYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// Presence of a vault file is what triggers the requirement.
-	if err := os.WriteFile(filepath.Join(cfgDir, "secrets.enc"), []byte("x"), 0o600); err != nil {
+	// Presence of a vault file (secrets.json) should not require a passphrase.
+	if err := os.WriteFile(filepath.Join(cfgDir, "secrets.json"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	// Without a passphrase source: install must fail and not touch the scheduler.
+	// Without any passphrase source: install must succeed.
 	root := NewRootCmd()
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
 	root.SetArgs([]string{"--config", cfgDir, "schedule", "install", "my-db"})
 	err := root.Execute()
-	if err == nil {
-		t.Fatal("expected install to fail when vault exists and no passphrase source is given")
-	}
-	if !strings.Contains(err.Error(), "passphrase") {
-		t.Fatalf("error should mention passphrase, got: %v", err)
-	}
-	if mock.installed {
-		t.Fatal("scheduler must not be invoked when the passphrase guard fails")
-	}
-
-	// With --passphrase-file: install proceeds.
-	passFile := filepath.Join(cfgDir, "pass")
-	if err := os.WriteFile(passFile, []byte("secret"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	root = NewRootCmd()
-	out.Reset()
-	root.SetOut(&out)
-	root.SetErr(&out)
-	root.SetArgs([]string{"--config", cfgDir, "schedule", "install", "my-db", "--passphrase-file", passFile})
-	if err := root.Execute(); err != nil {
-		t.Fatalf("install with passphrase file should succeed: %v", err)
+	if err != nil {
+		t.Fatalf("expected install to succeed without passphrase, got: %v", err)
 	}
 	if !mock.installed {
-		t.Fatal("expected scheduler to be invoked once passphrase source is provided")
+		t.Fatal("expected scheduler to be installed")
 	}
 }

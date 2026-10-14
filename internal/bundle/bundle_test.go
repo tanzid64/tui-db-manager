@@ -61,7 +61,7 @@ func TestExportLoadImportWithoutSecrets(t *testing.T) {
 
 func TestExportLoadImportWithSecrets(t *testing.T) {
 	srcVaultDir := t.TempDir()
-	srcVault, err := vault.Create(srcVaultDir, "local-master-pw")
+	srcVault, err := vault.Create(srcVaultDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestExportLoadImportWithSecrets(t *testing.T) {
 	}
 
 	targetDir := t.TempDir()
-	destVault, err := vault.Create(targetDir, "different-dest-pw")
+	destVault, err := vault.Create(targetDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestExportLoadImportWithSecrets(t *testing.T) {
 	}
 
 	// Reopen dest vault and verify secrets
-	reopened, err := vault.Open(targetDir, "different-dest-pw")
+	reopened, err := vault.Open(targetDir)
 	if err != nil {
 		t.Fatalf("open destination vault: %v", err)
 	}
