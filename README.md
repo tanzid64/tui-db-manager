@@ -55,18 +55,23 @@ Simply run `dbk` in any terminal:
 dbk
 ```
 
-When opened, `dbk` launches directly into the interactive dashboard with no master passphrase required. From the main menu, you can:
+When opened, `dbk` launches into the interactive dashboard. If your vault is locked, it will prompt for your Master Key (or read `DBK_MASTER_KEY` from your environment). From the main menu, you can:
 - **Jobs:** Add, configure, test, and trigger database backups.
 - **Storage:** Connect and verify local directories, S3 buckets, or Google Drive folders.
 - **Notifications:** Set up Telegram bots, SMTP email alerts, or HTTP webhooks.
 - **Restore:** Browse historical backups from storage and restore with safety confirmation guards.
 - **Settings:** Install system schedules, export/import configuration bundles, or check for updates.
-- **Logs / History:** Inspect recent runs, execution elapsed times, archive sizes, and error details.
+- **Logs / History:** Inspect recent runs, execution elapsed times, archive sizes, and error details stored directly in SQLite.
 
 ### 2. Headless Automation (CLI)
 
-#### Initialize Vault & Config
+#### Initialize Vault & SQLite Database
 ```bash
+# Interactive setup (prompts for Master Key and creates ~/.config/dbk/dbk.db):
+dbk init
+
+# Or unattended setup via environment variable:
+export DBK_MASTER_KEY="your-secure-master-key"
 dbk init
 ```
 
