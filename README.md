@@ -45,6 +45,20 @@ go install github.com/tanzid64/tui-db-manager/cmd/dbk@latest
 
 📖 **Detailed Documentation:** See the [Installation & Upgrade Guide](docs/install-and-upgrade.md) for step-by-step setup and flat-file migration instructions.
 
+### Clean Uninstallation
+
+To cleanly wipe all background schedules, configuration, secrets, and SQLite database:
+
+```bash
+# Via CLI:
+dbk uninstall --yes --purge-data
+
+# Via install script:
+curl -fsSL https://raw.githubusercontent.com/tanzid64/tui-db-manager/main/install.sh | sh -s -- --uninstall
+
+# Or inside TUI: Settings → Clean Uninstall & Purge Data
+```
+
 ---
 
 ## Quick Start

@@ -193,3 +193,66 @@ dbk
 ```
 
 Once you have verified that everything runs smoothly, you can archive or delete the `.bak` files.
+
+---
+
+## 3. Clean Uninstallation Guide
+
+If you ever wish to completely remove `dbk` from your system, a clean uninstall option is available across the CLI, TUI, and install script.
+
+A clean uninstall ensures that:
+1. All automated timer/cron schedules are unregistered from the OS scheduler (systemd user timers, crontab, or Task Scheduler).
+2. Schedule wrapper scripts (`~/.config/dbk/schedules/`) are removed.
+3. Your database, config, secrets, and history files (`~/.config/dbk`) are purged.
+4. Optionally, the `dbk` binary executable is deleted.
+
+---
+
+### Option A: Via Headless CLI (`dbk uninstall`)
+
+```bash
+# Interactive uninstallation (prompts for confirmation):
+dbk uninstall
+
+# Non-interactive clean purge of schedules, configuration, and SQLite database:
+dbk uninstall --yes --purge-data
+
+# Clean purge of schedules, data, and remove the dbk binary executable:
+dbk uninstall --yes --all
+```
+
+**CLI Flags:**
+- `-y, --yes`: Bypass interactive confirmation prompt.
+- `--purge-data`: Permanently remove the database, configuration, and secrets directory (`~/.config/dbk`) (default `true`).
+- `--remove-binary`: Delete the `dbk` executable from `/usr/local/bin/` or `~/.local/bin/`.
+- `--all`: Remove all schedules, purge all data, and remove the binary.
+
+---
+
+### Option B: Via Interactive Terminal UI (TUI)
+
+1. Launch `dbk`:
+   ```bash
+   dbk
+   ```
+2. Navigate to **Settings** in the main menu.
+3. Select **Clean Uninstall & Purge Data**.
+4. Choose whether to:
+   - [x] Remove all automated backup schedules
+   - [x] Permanently delete database, config, and secrets
+5. Confirm to execute. All automated tasks and local data will be cleanly wiped.
+
+---
+
+### Option C: Via Installer Script
+
+You can run the install script with `--uninstall` or `-u`:
+
+```bash
+# If you have the repository or script locally:
+./install.sh --uninstall
+
+# Or one-liner directly via curl:
+curl -fsSL https://raw.githubusercontent.com/tanzid64/tui-db-manager/main/install.sh | sh -s -- --uninstall
+```
+

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -589,4 +590,26 @@ func (s *Service) ImportBundle(srcPath, transferPass string, overwrite bool) (*b
 	}
 	_ = s.ReloadConfig()
 	return res, nil
+}
+
+func (s *Service) Uninstall(ctx context.Context, removeSchedules, purgeData bool) error {
+	if removeSchedules {
+		sched := schedule.DetectScheduler()
+		if s.Cfg != nil {
+			for _, j := range s.Cfg.Jobs {
+				_ = sched.Remove(ctx, j.Name)
+			}
+		}
+		_ = os.RemoveAll(filepath.Join(s.ConfigDir, "schedules"))
+	}
+	if purgeData {
+		if s.Store != nil {
+			_ = s.Store.Close()
+		}
+		_ = os.RemoveAll(s.ConfigDir)
+		s.Cfg = &config.Config{Version: config.CurrentVersion}
+		s.Vault = nil
+		s.Store = nil
+	}
+	return nil
 }

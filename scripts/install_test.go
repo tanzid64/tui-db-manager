@@ -136,3 +136,54 @@ echo "$OS:$ARCH"
 		})
 	}
 }
+
+func TestInstallScriptUninstallFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	cfgDir := filepath.Join(tmpDir, "config")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	fakeBin := filepath.Join(binDir, "dbk")
+	if err := os.WriteFile(fakeBin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "dummy"), []byte("test"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	scriptPath := filepath.Join("..", "install.sh")
+	cmd := exec.Command("sh", scriptPath, "--uninstall")
+	cmd.Env = append(os.Environ(),
+		"HOME="+tmpDir,
+		"DBK_INSTALL_DIR="+binDir,
+		"DBK_CONFIG_DIR="+cfgDir,
+		"NO_COLOR=1",
+	)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("uninstall script failed: %v, stderr: %s", err, stderr.String())
+	}
+
+	if !strings.Contains(stdout.String(), "Clean uninstall complete") {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+
+	// Verify fake binary was deleted
+	if _, err := os.Stat(fakeBin); !os.IsNotExist(err) {
+		t.Errorf("expected fake binary to be removed, but it still exists")
+	}
+
+	// Verify cfgDir was deleted
+	if _, err := os.Stat(cfgDir); !os.IsNotExist(err) {
+		t.Errorf("expected cfgDir to be removed, but it still exists")
+	}
+}
+

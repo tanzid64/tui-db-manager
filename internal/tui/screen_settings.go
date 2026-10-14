@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -16,6 +17,7 @@ const (
 	optExportConfig
 	optImportConfig
 	optCheckUpdate
+	optCleanUninstall
 )
 
 type SettingsScreen struct {
@@ -74,7 +76,7 @@ func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		optionsCount := 5
+		optionsCount := 6
 		switch msg.String() {
 		case "esc":
 			if s.onBack != nil {
@@ -115,6 +117,8 @@ func (s *SettingsScreen) triggerOption(opt SettingsOption) tea.Cmd {
 		if s.onCheckUpdate != nil {
 			return s.onCheckUpdate()
 		}
+	case optCleanUninstall:
+		s.openUninstallWizard()
 	}
 	return nil
 }
@@ -213,6 +217,21 @@ func (s *SettingsScreen) openImportWizard() {
 	s.isWizardOpen = true
 }
 
+func (s *SettingsScreen) openUninstallWizard() {
+	steps := []WizardStep{
+		{
+			Title:       "Clean Uninstall & Purge Data",
+			Description: "WARNING: This will permanently delete your database, config, and schedules",
+			Fields: []WizardField{
+				{Key: "remove_schedules", Label: "Remove all automated backup schedules", Type: FieldCheckbox, Checked: true},
+				{Key: "purge_data", Label: "Permanently delete database, config, and secrets", Type: FieldCheckbox, Checked: true},
+			},
+		},
+	}
+	s.wizard = NewWizard("Clean Uninstall", steps, nil, nil)
+	s.isWizardOpen = true
+}
+
 func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map[string]string) {
 	switch opt {
 	case optScheduleInstall:
@@ -278,6 +297,19 @@ func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map
 				res.ConfigResult.StoragesAdded+res.ConfigResult.StoragesUpdated,
 				res.ConfigResult.NotifiersAdded+res.ConfigResult.NotifiersUpdated))
 		}
+
+	case optCleanUninstall:
+		removeSched := vals["remove_schedules"] == "true"
+		purge := vals["purge_data"] == "true"
+		if !removeSched && !purge {
+			s.statusMsg = styleHelp.Render("Uninstall cancelled: no actions selected")
+			return
+		}
+		if err := s.svc.Uninstall(context.Background(), removeSched, purge); err != nil {
+			s.statusMsg = styleError.Render("✖ Uninstall failed: " + err.Error())
+		} else {
+			s.statusMsg = styleSuccess.Render("✔ Clean uninstall complete. All selected schedules and data have been purged.")
+		}
 	}
 }
 
@@ -301,6 +333,7 @@ func (s SettingsScreen) View() string {
 		{"Export Configuration Bundle", "Export portable YAML/JSON config bundle with optional transfer-passphrase secrets"},
 		{"Import Configuration Bundle", "Merge external configuration bundle and re-encrypt secrets into local vault"},
 		{"Check for Software Updates", "Check for newer releases of dbk on GitHub and upgrade in-place"},
+		{"Clean Uninstall & Purge Data", "Remove all scheduled timers, configuration, secrets, and SQLite database"},
 	}
 
 	for i, opt := range options {

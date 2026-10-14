@@ -33,6 +33,43 @@ log_error() {
   printf "%sERROR:%s %s\n" "$RED" "$RESET" "$1" >&2
 }
 
+# Handle --uninstall / -u flag
+if [ "${1:-}" = "--uninstall" ] || [ "${1:-}" = "-u" ]; then
+  log_info "Initiating clean uninstallation of dbk..."
+  
+  # 1. If dbk command is available, invoke its native uninstall to clean up schedules & data
+  if command -v dbk >/dev/null 2>&1; then
+    log_info "Running 'dbk uninstall --all --yes'..."
+    dbk uninstall --all --yes 2>/dev/null || true
+  fi
+
+  # 2. Remove binary locations
+  for b in "/usr/local/bin/dbk" "$HOME/.local/bin/dbk" "${INSTALL_DIR:-}/dbk"; do
+    if [ -f "$b" ]; then
+      log_info "Removing binary: $b"
+      rm -f "$b" 2>/dev/null || sudo rm -f "$b" 2>/dev/null || log_warn "Could not remove $b. Try: sudo rm $b"
+    fi
+  done
+
+  # 3. Clean configuration & database directory
+  CONFIG_DIR="${DBK_CONFIG_DIR:-$HOME/.config/dbk}"
+  if [ -d "$CONFIG_DIR" ]; then
+    log_info "Removing configuration and database directory: $CONFIG_DIR"
+    rm -rf "$CONFIG_DIR"
+  fi
+
+  # 4. Clean any residual systemd user units
+  if [ -d "$HOME/.config/systemd/user" ]; then
+    rm -f "$HOME/.config/systemd/user/dbk-"*.service "$HOME/.config/systemd/user/dbk-"*.timer 2>/dev/null || true
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl --user daemon-reload 2>/dev/null || true
+    fi
+  fi
+
+  log_info "Clean uninstall complete! All dbk binaries, schedules, and data have been removed."
+  exit 0
+fi
+
 # 1. OS Detection
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 case "$OS" in
