@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -120,8 +121,12 @@ func (s *SettingsScreen) triggerOption(opt SettingsOption) tea.Cmd {
 
 func (s *SettingsScreen) openScheduleInstallWizard() {
 	jobNames := make([]string, 0)
-	for _, j := range s.svc.Cfg.Jobs {
+	defaultCron := "0 3 * * *"
+	for i, j := range s.svc.Cfg.Jobs {
 		jobNames = append(jobNames, j.Name)
+		if i == 0 && j.Schedule != "" {
+			defaultCron = j.Schedule
+		}
 	}
 	if len(jobNames) == 0 {
 		s.statusMsg = styleWarning.Render("No jobs available to schedule")
@@ -134,11 +139,22 @@ func (s *SettingsScreen) openScheduleInstallWizard() {
 			Description: "Select job and cron expression (e.g. '0 3 * * *' for 3 AM daily)",
 			Fields: []WizardField{
 				{Key: "job", Label: "Job", Type: FieldSelect, Options: jobNames},
-				{Key: "cron", Label: "Cron Expression", Placeholder: "0 3 * * *", Type: FieldText},
+				{Key: "cron", Label: "Cron Expression", Placeholder: "0 3 * * *", Value: defaultCron, Type: FieldText},
 			},
 		},
 	}
-	s.wizard = NewWizard("Scheduling", steps, nil, nil)
+	w := NewWizard("Scheduling", steps, nil, nil)
+	w.ValidateStep = func(stepIndex int, vals map[string]string) error {
+		cron := strings.TrimSpace(vals["cron"])
+		if cron == "" {
+			return errors.New("cron expression cannot be empty")
+		}
+		if len(strings.Fields(cron)) != 5 {
+			return fmt.Errorf("cron %q must have 5 fields (minute hour day month weekday), e.g. '0 2 * * *'", cron)
+		}
+		return nil
+	}
+	s.wizard = w
 	s.isWizardOpen = true
 }
 
@@ -201,11 +217,22 @@ func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map
 	switch opt {
 	case optScheduleInstall:
 		job := vals["job"]
-		cron := vals["cron"]
+		cron := strings.TrimSpace(vals["cron"])
+		if cron == "" {
+			for _, j := range s.svc.Cfg.Jobs {
+				if j.Name == job && j.Schedule != "" {
+					cron = j.Schedule
+					break
+				}
+			}
+		}
+		if cron == "" {
+			cron = "0 3 * * *"
+		}
 		if err := s.svc.InstallSchedule(job, cron); err != nil {
 			s.statusMsg = styleError.Render("✖ Schedule install failed: " + err.Error())
 		} else {
-			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Automated schedule installed for job %q!", job))
+			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Automated schedule installed for job %q (%s)!", job, cron))
 		}
 
 	case optScheduleRemove:

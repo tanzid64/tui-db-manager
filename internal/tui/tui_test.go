@@ -772,3 +772,68 @@ func TestNotifyScreenEditNotifier(t *testing.T) {
 		t.Fatalf("expected pre-filled chat_id '-100123'")
 	}
 }
+
+func TestJobsScreenCustomCronValidation(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	screen := NewJobsScreen(svc, nil, nil)
+	screen.SetSize(120, 30)
+
+	// Open wizard
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if !screen.isWizardOpen {
+		t.Fatalf("expected wizard open")
+	}
+
+	// Step 0: Name and engine
+	screen.wizard.Steps[0].Fields[0].Input.SetValue("cron-job")
+	// Step 0 -> Step 1
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Step 1: Server connection -> enter through fields
+	for i := 0; i < len(screen.wizard.Steps[1].Fields); i++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+
+	// Step 2: Database Name
+	screen.wizard.Steps[2].Fields[0].Input.SetValue("mydb")
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Now on Step 3: Storage & Schedule
+	// Set schedule option to "Custom Cron Expression" (index 10)
+	screen.wizard.Steps[3].Fields[1].SelectedOpt = 10
+	// Set invalid 4-field cron
+	screen.wizard.Steps[3].Fields[2].Input.SetValue("1 * * *")
+
+	// Advance through storage and schedule fields
+	for i := 0; i < len(screen.wizard.Steps[3].Fields); i++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+
+	// Validation must prevent wizard from closing with 4-field cron
+	if !screen.isWizardOpen {
+		t.Fatalf("expected wizard to stay open due to invalid 4-field cron")
+	}
+	if !strings.Contains(screen.wizard.ErrMessage, "must have 5 fields") {
+		t.Fatalf("expected 5 fields error message, got %q", screen.wizard.ErrMessage)
+	}
+
+	// Now fix to valid 5-field cron
+	screen.wizard.Steps[3].Fields[2].Input.SetValue("0 2 * * *")
+	for i := 0; i < len(screen.wizard.Steps[3].Fields); i++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+
+	if screen.isWizardOpen {
+		t.Fatalf("expected wizard to complete and close with valid 5-field cron, err: %s", screen.wizard.ErrMessage)
+	}
+	if len(svc.Cfg.Jobs) != 1 || svc.Cfg.Jobs[0].Schedule != "0 2 * * *" {
+		t.Fatalf("expected job schedule '0 2 * * *', got %+v", svc.Cfg.Jobs)
+	}
+}
+

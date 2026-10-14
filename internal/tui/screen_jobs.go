@@ -507,6 +507,16 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 				return errors.New("database name cannot be empty")
 			}
 		}
+
+		if vals["schedule"] == "Custom Cron Expression" {
+			cron := strings.TrimSpace(vals["custom_cron"])
+			if cron == "" {
+				return errors.New("custom cron expression cannot be empty")
+			}
+			if len(strings.Fields(cron)) != 5 {
+				return fmt.Errorf("custom cron %q must have 5 fields (minute hour day month weekday), e.g. '0 2 * * *'", cron)
+			}
+		}
 		return nil
 	}
 
