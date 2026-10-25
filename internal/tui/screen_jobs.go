@@ -197,7 +197,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 
 	keepLastStr := "7"
 	compressChecked := true
-	encryptChecked := false
+	encryptChecked := true // new jobs encrypt by default
 
 	if existing != nil {
 		s.isEditing = true
@@ -225,7 +225,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 			{Key: "storage", Label: "Storage Destination", Type: FieldSelect, Options: storageNames, SelectedOpt: selectedStorageIdx},
 			{Key: "keep_last", Label: "Keep Last Backups", Placeholder: "7", Value: keepLastStr, Type: FieldText},
 			{Key: "compress", Label: "Gzip Compress", Type: FieldCheckbox, Checked: compressChecked},
-			{Key: "encrypt", Label: "Encrypt (key kept in vault)", Type: FieldCheckbox, Checked: encryptChecked},
+			{Key: "encrypt", Label: "Encrypt backups (recommended)", Type: FieldCheckbox, Checked: encryptChecked},
 		},
 	}
 
@@ -580,7 +580,11 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 			return
 		}
 		s.selected = len(s.svc.Cfg.Jobs) - 1
-		s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added job %q — press t to test it, r to run a backup now", name))
+		msg := fmt.Sprintf("✔ Added job %q — press t to test it, r to run a backup now", name)
+		if job.Encrypt {
+			msg += ". Backups are encrypted: keep a copy of the key (Settings → Export, include secrets) or they can't be restored on a new server"
+		}
+		s.statusMsg = styleSuccess.Render(msg)
 	}
 }
 
@@ -618,6 +622,9 @@ func (s JobsScreen) View() string {
 			featStr := ""
 			if len(features) > 0 {
 				featStr = fmt.Sprintf("[%s]", strings.Join(features, "+"))
+			}
+			if st, ok := s.svc.Cfg.Storage(j.Storage); ok && !j.Encrypt && st.Type != "local" {
+				featStr += " " + styleWarning.Render("⚠ not encrypted")
 			}
 
 			lastRun := globalHistory.LastForJob(j.Name)

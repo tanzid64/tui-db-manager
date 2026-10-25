@@ -68,7 +68,7 @@ func openOrCreateVault(cmd *cobra.Command) (string, SecretManager, error) {
 			}
 		}
 		if key == "" {
-			key = "dbk-default"
+			key = store.GenerateMasterKey()
 		}
 	}
 

@@ -100,7 +100,7 @@ func TestVaultSQLiteFullWorkflow(t *testing.T) {
 		t.Fatalf("expected history record from SQLite db, got: %+v (err=%v)", histRecords, err)
 	}
 
-	// 5. dbk schedule install: verify wrapper script bakes DBK_MASTER_KEY
+	// 5. dbk schedule install: the key is in the env file, so the wrapper must not copy it
 	schedCmd := NewRootCmd()
 	schedCmd.SetArgs([]string{"schedule", "install", "prod-mysql", "--at", "0 2 * * *", "--config", dir})
 	if err := schedCmd.Execute(); err != nil {
@@ -113,11 +113,11 @@ func TestVaultSQLiteFullWorkflow(t *testing.T) {
 		t.Fatalf("read wrapper script: %v", err)
 	}
 	scriptStr := string(wrapperContent)
-	if !strings.Contains(scriptStr, "export DBK_MASTER_KEY=") {
-		t.Fatalf("wrapper script missing export DBK_MASTER_KEY: %s", scriptStr)
+	if strings.Contains(scriptStr, "DBK_MASTER_KEY") || strings.Contains(scriptStr, masterKey) {
+		t.Fatalf("wrapper script should not contain the master key: %s", scriptStr)
 	}
-	if !strings.Contains(scriptStr, masterKey) {
-		t.Fatalf("wrapper script does not contain master key: %s", scriptStr)
+	if !strings.Contains(scriptStr, "--config") {
+		t.Fatalf("wrapper script must pass --config so the run finds the env file: %s", scriptStr)
 	}
 
 	// 6. dbk config export with transfer passphrase

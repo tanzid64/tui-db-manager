@@ -18,6 +18,7 @@ type MenuScreen struct {
 	width    int
 	height   int
 	onSelect func(index int) tea.Cmd
+	Notice   string // security warning shown above the menu
 }
 
 func NewMenuScreen(onSelect func(index int) tea.Cmd) MenuScreen {
@@ -78,6 +79,10 @@ func (m MenuScreen) View() string {
 	b.WriteString("\n")
 	b.WriteString(styleSubtitle.Render("Main Menu"))
 	b.WriteString("\n\n")
+	if m.Notice != "" {
+		b.WriteString(styleWarning.Render("⚠ " + m.Notice))
+		b.WriteString("\n\n")
+	}
 
 	for i, it := range m.items {
 		prefix := "  "

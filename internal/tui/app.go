@@ -86,6 +86,7 @@ func NewApp(svc *Service) *App {
 		}
 		return nil
 	})
+	app.menuScreen.Notice = svc.SecurityNotice()
 
 	toMenu := func() tea.Cmd {
 		app.currentScreen = screenMainMenu

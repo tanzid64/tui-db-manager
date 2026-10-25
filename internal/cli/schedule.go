@@ -60,6 +60,7 @@ func newScheduleInstallCmd() *cobra.Command {
 			if masterKey == "" {
 				masterKey = store.ResolveMasterKey(app.dir)
 			}
+			masterKey = store.KeyForSchedule(app.dir, masterKey)
 
 			sched := defaultScheduler
 			opts := schedule.InstallOptions{

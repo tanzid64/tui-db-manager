@@ -52,6 +52,13 @@ func loadApp(cmd *cobra.Command) (*appCtx, error) {
 		s, err := store.Open(dir, key)
 		if err == nil {
 			db = s
+			// Only interactive runs rotate the key, so two scheduled backups
+			// never race to do it.
+			if term.IsTerminal(int(os.Stdin.Fd())) {
+				if changed, err := store.UpgradeDefaultKey(dir, db); err == nil && changed {
+					fmt.Fprintf(os.Stderr, "dbk: replaced the public default master key with a random one (saved in %s)\n", filepath.Join(dir, "env"))
+				}
+			}
 		} else if key != "" && errors.Is(err, store.ErrBadPassphrase) {
 			return nil, fmt.Errorf("master key authentication failed: %w", err)
 		} else {

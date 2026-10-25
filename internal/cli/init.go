@@ -25,8 +25,13 @@ func newInitCmd() *cobra.Command {
 
 			if store.Exists(dir) {
 				cmd.Printf("dbk database already exists at %s\n", store.Path(dir))
-				if db, err := store.Open(dir, ""); err == nil {
+				if db, err := store.Open(dir, store.ResolveMasterKey(dir)); err == nil {
 					defer db.Close()
+					if changed, err := store.UpgradeDefaultKey(dir, db); err != nil {
+						cmd.PrintErrf("warning: could not replace the default master key: %v\n", err)
+					} else if changed {
+						cmd.Printf("replaced the default master key with a random one (saved in %s)\n", dir+"/env")
+					}
 					if cfg, err := db.LoadConfig(); err == nil && cfg.EnsureDefaultStorage() {
 						if db.SaveConfig(cfg) == nil {
 							_ = os.MkdirAll(config.DefaultBackupDir(), 0o700)
@@ -39,32 +44,30 @@ func newInitCmd() *cobra.Command {
 
 			key := store.ResolveMasterKey(dir)
 			if key == "" && term.IsTerminal(int(os.Stdin.Fd())) {
-				fmt.Fprint(os.Stderr, "Enter Master Password or Encryption Key: ")
+				fmt.Fprint(os.Stderr, "Enter a master key (or press Enter to generate a random one): ")
 				b1, err := term.ReadPassword(int(os.Stdin.Fd()))
 				fmt.Fprintln(os.Stderr)
 				if err != nil {
 					return err
 				}
 				pass1 := strings.TrimRight(string(b1), "\r\n")
-				if pass1 == "" {
-					return errors.New("master password cannot be empty")
+				if pass1 != "" {
+					fmt.Fprint(os.Stderr, "Confirm master key: ")
+					b2, err := term.ReadPassword(int(os.Stdin.Fd()))
+					fmt.Fprintln(os.Stderr)
+					if err != nil {
+						return err
+					}
+					pass2 := strings.TrimRight(string(b2), "\r\n")
+					if pass1 != pass2 {
+						return errors.New("passwords do not match")
+					}
+					key = pass1
 				}
-
-				fmt.Fprint(os.Stderr, "Confirm Master Password: ")
-				b2, err := term.ReadPassword(int(os.Stdin.Fd()))
-				fmt.Fprintln(os.Stderr)
-				if err != nil {
-					return err
-				}
-				pass2 := strings.TrimRight(string(b2), "\r\n")
-				if pass1 != pass2 {
-					return errors.New("passwords do not match")
-				}
-				key = pass1
 			}
 
 			if key == "" {
-				key = "dbk-default"
+				key = store.GenerateMasterKey()
 			}
 
 			db, err := store.Init(dir, key)

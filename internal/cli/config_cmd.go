@@ -186,7 +186,7 @@ func newConfigImportCmd() *cobra.Command {
 				} else {
 					key := store.ResolveMasterKey(app.dir)
 					if key == "" {
-						key = "dbk-default"
+						key = store.GenerateMasterKey()
 					}
 					s, err := store.Init(app.dir, key)
 					if err != nil {

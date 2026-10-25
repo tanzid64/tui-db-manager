@@ -61,6 +61,7 @@ func NewService(configDir, passFile string) (*Service, error) {
 	if store.Exists(dir) {
 		db, err := store.Open(dir, key)
 		if err == nil {
+			_, _ = store.UpgradeDefaultKey(dir, db)
 			s.Store = db
 			s.Vault = db
 			globalHistory = history.NewDB(db)
@@ -76,7 +77,7 @@ func NewService(configDir, passFile string) (*Service, error) {
 		}
 	} else if store.LegacyFilesExist(dir) {
 		if key == "" {
-			key = "dbk-default"
+			key = store.GenerateMasterKey()
 		}
 		db, err := store.Init(dir, key)
 		if err == nil {
@@ -90,7 +91,7 @@ func NewService(configDir, passFile string) (*Service, error) {
 	} else {
 		// New database initialization
 		if key == "" {
-			key = "dbk-default"
+			key = store.GenerateMasterKey()
 		}
 		db, err := store.Init(dir, key)
 		if err == nil {
@@ -215,9 +216,16 @@ func (s *Service) UnlockVault(pass ...string) error {
 }
 
 func (s *Service) CreateVault(pass ...string) error {
-	key := "dbk-default"
+	key := store.ResolveMasterKey(s.ConfigDir)
 	if len(pass) > 0 && pass[0] != "" {
 		key = pass[0]
+	}
+	if key == "" {
+		if s.Store != nil || store.Exists(s.ConfigDir) {
+			key = store.DefaultMasterKey // installs from older versions
+		} else {
+			key = store.GenerateMasterKey()
+		}
 	}
 	if s.Store != nil && s.Store.IsUnlocked() {
 		return nil
@@ -566,6 +574,7 @@ func (s *Service) InstallSchedule(jobName, expr string) error {
 	if masterKey == "" {
 		masterKey = store.ResolveMasterKey(s.ConfigDir)
 	}
+	masterKey = store.KeyForSchedule(s.ConfigDir, masterKey)
 	ctx := context.Background()
 	// Clear any timer an older dbk version installed in another scheduler.
 	_ = removeAllSchedules(ctx, jobName)
@@ -702,4 +711,13 @@ func (s *Service) Uninstall(ctx context.Context, removeSchedules, purgeData bool
 		s.Store = nil
 	}
 	return nil
+}
+
+// SecurityNotice returns a warning when the vault is still protected by the
+// public default master key (only possible when DBK_MASTER_KEY forces it).
+func (s *Service) SecurityNotice() string {
+	if s.Store != nil && s.Store.UsesDefaultKey() {
+		return "Saved passwords use the public default master key. Unset DBK_MASTER_KEY and reopen dbk to replace it."
+	}
+	return ""
 }
