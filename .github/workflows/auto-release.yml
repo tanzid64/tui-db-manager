@@ -24,8 +24,18 @@ jobs:
       # Infer the next version from Conventional Commits since the last tag
       # (feat -> minor, fix/other -> patch, feat!/BREAKING CHANGE -> major),
       # falling back to a patch bump so every push to main still releases.
+      # A commit pushed together with its own version tag (e.g. a manual
+      # v1.0.0) is released by release.yml; don't bump it again here.
+      - name: Skip if commit is already tagged
+        id: tagged
+        run: |
+          if [ -n "$(git tag --points-at HEAD 'v*')" ]; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Bump version and create tag
         id: tag
+        if: steps.tagged.outputs.already != 'true'
         uses: mathieudutour/github-tag-action@v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
