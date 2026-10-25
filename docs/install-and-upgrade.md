@@ -89,7 +89,7 @@ dbk list production-postgres
 
 ### Step 5: Install Automated Cron / Systemd Schedule
 
-Run `dbk schedule install` from the CLI or navigate to **Settings → Install Schedule** in the TUI:
+Run `dbk schedule install` from the CLI or open **Schedules** in the TUI main menu:
 
 ```bash
 # Schedule daily backup at 3:00 AM:
@@ -97,7 +97,7 @@ dbk schedule install production-postgres --at "0 3 * * *"
 ```
 
 > [!NOTE]
-> `dbk` automatically generates a wrapper script at `~/.config/dbk/schedules/dbk-<job>.sh` with `0700` permissions. It bakes in `export DBK_MASTER_KEY='...'` and a complete `PATH`, ensuring unattended cron execution works without hassle—even in stripped cPanel cron environments.
+> `dbk` automatically generates a wrapper script at `~/.config/dbk/schedules/dbk-<job>.sh` with `0700` permissions. It bakes in `export DBK_MASTER_KEY='...'` and a complete `PATH`, ensuring unattended cron execution works without hassle—even in stripped cPanel cron environments. Each run's output is appended to `~/.config/dbk/logs/<job>.log`; check it first if a scheduled backup is missing.
 
 ---
 

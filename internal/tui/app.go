@@ -25,6 +25,7 @@ const (
 	screenRestore
 	screenSettings
 	logsScreenID
+	screenSchedule
 )
 
 type updateCheckMsg struct {
@@ -51,6 +52,7 @@ type App struct {
 	restoreScreen  RestoreScreen
 	settingsScreen SettingsScreen
 	logsScreen     LogsScreen
+	scheduleScreen ScheduleScreen
 
 	updateRelease   *update.Release
 	showUpdateModal bool
@@ -70,15 +72,15 @@ func NewApp(svc *Service) *App {
 		case 0:
 			app.currentScreen = screenJobs
 		case 1:
-			app.currentScreen = screenStorage
+			app.currentScreen = screenSchedule
 		case 2:
-			app.currentScreen = screenNotifications
-		case 3:
 			app.currentScreen = screenRestore
+		case 3:
+			app.currentScreen = screenStorage
 		case 4:
-			app.currentScreen = screenSettings
-		case 5:
 			app.currentScreen = logsScreenID
+		case 5:
+			app.currentScreen = screenSettings
 		case 6:
 			return tea.Quit
 		}
@@ -95,11 +97,20 @@ func NewApp(svc *Service) *App {
 		return app.restoreScreen.SelectJob(jobName)
 	})
 	app.storageScreen = NewStorageScreen(svc, toMenu)
-	app.notifyScreen = NewNotifyScreen(svc, toMenu)
+	toSettings := func() tea.Cmd {
+		app.currentScreen = screenSettings
+		return nil
+	}
+	app.notifyScreen = NewNotifyScreen(svc, toSettings)
+	app.scheduleScreen = NewScheduleScreen(svc, toMenu)
 	app.restoreScreen = NewRestoreScreen(svc, toMenu)
 	app.settingsScreen = NewSettingsScreen(svc, toMenu, func() tea.Cmd {
 		return app.checkUpdateCmd(true)
 	})
+	app.settingsScreen.onOpenNotifications = func() tea.Cmd {
+		app.currentScreen = screenNotifications
+		return nil
+	}
 	app.logsScreen = NewLogsScreen(toMenu)
 
 	return app
@@ -154,6 +165,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.restoreScreen.SetSize(msg.Width, msg.Height)
 		a.settingsScreen.SetSize(msg.Width, msg.Height)
 		a.logsScreen.SetSize(msg.Width, msg.Height)
+		a.scheduleScreen.SetSize(msg.Width, msg.Height)
 		return a, nil
 
 	case updateCheckMsg:
@@ -250,6 +262,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.settingsScreen, cmd = a.settingsScreen.Update(msg)
 	case logsScreenID:
 		a.logsScreen, cmd = a.logsScreen.Update(msg)
+	case screenSchedule:
+		a.scheduleScreen, cmd = a.scheduleScreen.Update(msg)
 	}
 
 	return a, cmd
@@ -275,11 +289,13 @@ func (a *App) View() string {
 			body = a.settingsScreen.View()
 		case logsScreenID:
 			body = a.logsScreen.View()
+		case screenSchedule:
+			body = a.scheduleScreen.View()
 		}
 	}
 
 	// Persistent header
-	headerText := fmt.Sprintf(" dbk %s • Secure Database Backup Manager ", buildinfo.Version)
+	headerText := fmt.Sprintf(" dbk %s • Database Backup ", buildinfo.Version)
 	if a.updateRelease != nil {
 		headerText += fmt.Sprintf(" • 🔔 Update Available (%s, press 'u')", a.updateRelease.TagName)
 	}

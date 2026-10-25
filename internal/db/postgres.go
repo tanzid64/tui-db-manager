@@ -28,13 +28,19 @@ func PgEnv(c Conn) []string {
 	return env
 }
 
-func BuildPgDumpArgs(c Conn) []string {
+// pgConnArgs returns host/port/user flags, filling in defaults for blanks.
+func pgConnArgs(c Conn) []string {
+	c = withDefaults(c, 5432, "postgres")
 	return []string{
 		fmt.Sprintf("--host=%s", c.Host),
 		fmt.Sprintf("--port=%d", c.Port),
 		fmt.Sprintf("--username=%s", c.User),
-		"--no-password", "--format=custom", c.Database,
+		"--no-password",
 	}
+}
+
+func BuildPgDumpArgs(c Conn) []string {
+	return append(pgConnArgs(c), "--format=custom", c.Database)
 }
 
 func (e postgresEngine) Test(ctx context.Context, c Conn) error {
@@ -42,9 +48,8 @@ func (e postgresEngine) Test(ctx context.Context, c Conn) error {
 	if err != nil {
 		return err
 	}
-	return runCmd(ctx, cmdSpec{Path: tool, Env: PgEnv(c),
-		Args: []string{fmt.Sprintf("--host=%s", c.Host), fmt.Sprintf("--port=%d", c.Port),
-			fmt.Sprintf("--username=%s", c.User), "--no-password", "-c", "SELECT 1", c.Database}})
+	args := append(pgConnArgs(c), "-c", "SELECT 1", c.Database)
+	return runCmd(ctx, cmdSpec{Path: tool, Env: PgEnv(c), Args: args})
 }
 
 func (e postgresEngine) Dump(ctx context.Context, c Conn, w io.Writer) error {
@@ -60,9 +65,10 @@ func (e postgresEngine) Restore(ctx context.Context, c Conn, r io.Reader) error 
 	if err != nil {
 		return err
 	}
-	args := []string{fmt.Sprintf("--host=%s", c.Host), fmt.Sprintf("--port=%d", c.Port),
-		fmt.Sprintf("--username=%s", c.User), "--no-password", "--clean", "--if-exists",
-		fmt.Sprintf("--dbname=%s", c.Database)}
+	// --no-owner/--no-acl let a backup restore cleanly as a different user
+	// (e.g. moving between servers or restoring on shared hosting).
+	args := append(pgConnArgs(c), "--clean", "--if-exists", "--no-owner", "--no-acl",
+		fmt.Sprintf("--dbname=%s", c.Database))
 	return runCmd(ctx, cmdSpec{Path: tool, Args: args, Env: PgEnv(c), Stdin: r})
 }
 
@@ -71,30 +77,13 @@ func (e postgresEngine) ListDatabases(ctx context.Context, c Conn) ([]string, er
 	if err != nil {
 		return nil, err
 	}
-	host := c.Host
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	port := c.Port
-	if port <= 0 {
-		port = 5432
-	}
-	user := c.User
-	if user == "" {
-		user = "postgres"
-	}
-
 	runQuery := func(dbName string) ([]string, error) {
 		var out bytes.Buffer
-		args := []string{
-			fmt.Sprintf("--host=%s", host),
-			fmt.Sprintf("--port=%d", port),
-			fmt.Sprintf("--username=%s", user),
-			"--no-password",
+		args := append(pgConnArgs(c),
 			"-d", dbName,
 			"-t", "-A",
 			"-c", "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname;",
-		}
+		)
 		err := runCmd(ctx, cmdSpec{
 			Path:   tool,
 			Args:   args,

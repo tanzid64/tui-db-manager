@@ -191,6 +191,9 @@ WantedBy=timers.target
 		return fmt.Errorf("enable systemd timer %s: %w", timerUnitName(job), err)
 	}
 
+	// Without lingering, user timers stop when the user logs out of SSH.
+	_, _ = s.executor(ctx, nil, "loginctl", "enable-linger")
+
 	return nil
 }
 

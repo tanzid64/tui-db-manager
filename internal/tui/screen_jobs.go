@@ -24,11 +24,17 @@ type JobsScreen struct {
 	editingJobName string
 	onBack         func() tea.Cmd
 	onRestoreJob   func(jobName string) tea.Cmd
+	pendingDelete  string // job name awaiting a second 'd' to confirm
 }
 
 type jobRunResultMsg struct {
 	rec RunRecord
 	err error
+}
+
+type jobTestResultMsg struct {
+	name string
+	err  error
 }
 
 func NewJobsScreen(svc *Service, onBack func() tea.Cmd, onRestoreJob func(string) tea.Cmd) JobsScreen {
@@ -77,12 +83,23 @@ func (s JobsScreen) Update(msg tea.Msg) (JobsScreen, tea.Cmd) {
 		if msg.err != nil {
 			s.statusMsg = styleError.Render("✖ Run failed: " + msg.err.Error())
 		} else {
-			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Backup succeeded! Key: %s, Size: %d bytes (%v)", msg.rec.Target, msg.rec.Size, msg.rec.Duration.Round(100)))
+			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Backup saved: %s (%s, %s)", msg.rec.Target, humanSize(msg.rec.Size), msg.rec.Duration.Round(time.Millisecond)))
+		}
+		return s, nil
+
+	case jobTestResultMsg:
+		if msg.err != nil {
+			s.statusMsg = styleError.Render(fmt.Sprintf("✖ Cannot connect for %q: %v", msg.name, msg.err))
+		} else {
+			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Database connection for %q works", msg.name))
 		}
 		return s, nil
 
 	case tea.KeyMsg:
 		jobs := s.svc.Cfg.Jobs
+		if msg.String() != "d" {
+			s.pendingDelete = ""
+		}
 		switch msg.String() {
 		case "esc":
 			if s.onBack != nil {
@@ -104,7 +121,17 @@ func (s JobsScreen) Update(msg tea.Msg) (JobsScreen, tea.Cmd) {
 					s.selected = 0
 				}
 			}
-		case "r":
+		case "t":
+			if len(jobs) > 0 && s.selected < len(jobs) {
+				name := jobs[s.selected].Name
+				s.statusMsg = styleWarning.Render(fmt.Sprintf("⟳ Testing database connection for %q...", name))
+				return s, func() tea.Msg {
+					ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer cancel()
+					return jobTestResultMsg{name: name, err: s.svc.TestJob(ctx, name)}
+				}
+			}
+		case "r", "enter":
 			if len(jobs) > 0 && s.selected < len(jobs) {
 				job := jobs[s.selected]
 				s.statusMsg = styleWarning.Render(fmt.Sprintf("⟳ Running backup for %q...", job.Name))
@@ -128,9 +155,18 @@ func (s JobsScreen) Update(msg tea.Msg) (JobsScreen, tea.Cmd) {
 		case "d":
 			if len(jobs) > 0 && s.selected < len(jobs) {
 				delJob := jobs[s.selected].Name
+				if s.pendingDelete != delJob {
+					s.pendingDelete = delJob
+					s.statusMsg = styleWarning.Render(fmt.Sprintf("Press d again to delete job %q (its backup files are kept)", delJob))
+					return s, nil
+				}
+				s.pendingDelete = ""
+				if jobs[s.selected].Schedule != "" {
+					_ = s.svc.RemoveSchedule(delJob)
+				}
 				newJobs := make([]config.Job, 0)
-				for i, j := range jobs {
-					if i != s.selected {
+				for _, j := range s.svc.Cfg.Jobs {
+					if j.Name != delJob {
 						newJobs = append(newJobs, j)
 					}
 				}
@@ -146,17 +182,19 @@ func (s JobsScreen) Update(msg tea.Msg) (JobsScreen, tea.Cmd) {
 	return s, nil
 }
 
-
 func (s *JobsScreen) openJobWizard(existing *config.Job) {
-	storageNames := make([]string, 0)
-	for _, st := range s.svc.Cfg.Storages {
-		storageNames = append(storageNames, st.Name)
+	if s.svc.Cfg.EnsureDefaultStorage() {
+		_ = s.svc.SaveConfig()
 	}
-	if len(storageNames) == 0 {
-		storageNames = append(storageNames, "default-local")
+	storageNames := make([]string, 0)
+	selectedStorageIdx := 0
+	for i, st := range s.svc.Cfg.Storages {
+		storageNames = append(storageNames, st.Name)
+		if st.Name == config.DefaultStorageName {
+			selectedStorageIdx = i
+		}
 	}
 
-	selectedStorageIdx := 0
 	keepLastStr := "7"
 	compressChecked := true
 	encryptChecked := false
@@ -187,7 +225,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 			{Key: "storage", Label: "Storage Destination", Type: FieldSelect, Options: storageNames, SelectedOpt: selectedStorageIdx},
 			{Key: "keep_last", Label: "Keep Last Backups", Placeholder: "7", Value: keepLastStr, Type: FieldText},
 			{Key: "compress", Label: "Gzip Compress", Type: FieldCheckbox, Checked: compressChecked},
-			{Key: "encrypt", Label: "Age Encrypt", Type: FieldCheckbox, Checked: encryptChecked},
+			{Key: "encrypt", Label: "Encrypt (key kept in vault)", Type: FieldCheckbox, Checked: encryptChecked},
 		},
 	}
 
@@ -299,27 +337,20 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 				}
 				wiz.SetSteps([]WizardStep{wiz.Steps[0], sqliteStep, storageStep})
 			} else {
-				portPlaceholder := "3306"
-				userPlaceholder := "root"
-				switch engine {
-				case "postgres":
-					portPlaceholder = "5432"
-					userPlaceholder = "postgres"
-				case "mongodb":
-					portPlaceholder = "27017"
-					userPlaceholder = "admin"
-				}
+				portPlaceholder, userPlaceholder := engineDefaults(engine)
 
 				hostValCurr := vals["host"]
 				if hostValCurr == "" {
 					hostValCurr = "127.0.0.1"
 				}
+				// Switch port/user to the new engine's defaults unless the user
+				// typed their own values (e.g. a cPanel database user).
 				portValCurr := vals["port"]
-				if portValCurr == "" {
+				if isDefaultPort(portValCurr) {
 					portValCurr = portPlaceholder
 				}
 				userValCurr := vals["user"]
-				if userValCurr == "" {
+				if isDefaultUser(userValCurr) {
 					userValCurr = userPlaceholder
 				}
 
@@ -466,32 +497,43 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 		host = "127.0.0.1"
 	}
 
-	sched := ""
+	// Start from the existing job so fields the wizard doesn't show
+	// (notifiers, encryption key, schedule) survive an edit.
+	var job config.Job
 	if s.isEditing {
-		for _, existingJob := range s.svc.Cfg.Jobs {
-			if existingJob.Name == s.editingJobName {
-				sched = existingJob.Schedule
-				break
-			}
+		if existing, ok := s.svc.Cfg.Job(s.editingJobName); ok {
+			job = existing
 		}
 	}
+	job.Name = name
+	job.Engine = engine
+	job.Conn = config.Conn{
+		Host:        host,
+		Port:        port,
+		User:        strings.TrimSpace(vals["user"]),
+		Database:    strings.TrimSpace(vals["database"]),
+		Path:        config.ExpandPath(vals["path"]),
+		TLS:         vals["tls"] == "true",
+		PasswordRef: job.Conn.PasswordRef,
+	}
+	if engine == "sqlite" {
+		job.Conn.Host, job.Conn.Port = "", 0
+	}
+	job.Storage = vals["storage"]
+	job.Retention = config.Retention{KeepLast: keepLast}
+	job.Compress = vals["compress"] == "true"
+	job.Encrypt = vals["encrypt"] == "true"
 
-	job := config.Job{
-		Name:   name,
-		Engine: engine,
-		Conn: config.Conn{
-			Host:     host,
-			Port:     port,
-			User:     strings.TrimSpace(vals["user"]),
-			Database: strings.TrimSpace(vals["database"]),
-			Path:     strings.TrimSpace(vals["path"]),
-			TLS:      vals["tls"] == "true",
-		},
-		Storage:   vals["storage"],
-		Retention: config.Retention{KeepLast: keepLast},
-		Compress:  vals["compress"] == "true",
-		Encrypt:   vals["encrypt"] == "true",
-		Schedule:  sched,
+	renamed := s.isEditing && s.editingJobName != name
+	if renamed && s.svc.Vault != nil {
+		// Carry the encryption key over so existing backups stay restorable.
+		if id, ok := s.svc.Vault.Get("job/" + s.editingJobName + "/age_identity"); ok {
+			s.svc.Vault.Set("job/"+name+"/age_identity", id)
+		}
+	}
+	if err := s.svc.EnsureEncryptionKey(&job); err != nil {
+		s.statusMsg = styleError.Render("✖ " + err.Error())
+		return
 	}
 
 	// Store password in vault if provided
@@ -521,12 +563,24 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 			s.svc.Vault.Delete("job/" + s.editingJobName + "/password")
 			_ = s.svc.Vault.Save()
 		}
-		_ = s.svc.SaveConfig()
-		s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Updated job %q successfully", name))
+		if err := s.svc.SaveConfig(); err != nil {
+			s.statusMsg = styleError.Render("✖ Could not save job: " + err.Error())
+			return
+		}
+		// A scheduled job's timer runs it by name, so move the schedule too.
+		if renamed && job.Schedule != "" {
+			_ = s.svc.RemoveSchedule(s.editingJobName)
+			_ = s.svc.InstallSchedule(name, job.Schedule)
+		}
+		s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Updated job %q", name))
 	} else {
 		s.svc.Cfg.Jobs = append(s.svc.Cfg.Jobs, job)
-		_ = s.svc.SaveConfig()
-		s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added job %q", name))
+		if err := s.svc.SaveConfig(); err != nil {
+			s.statusMsg = styleError.Render("✖ Could not save job: " + err.Error())
+			return
+		}
+		s.selected = len(s.svc.Cfg.Jobs) - 1
+		s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added job %q — press t to test it, r to run a backup now", name))
 	}
 }
 
@@ -536,14 +590,14 @@ func (s JobsScreen) View() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(styleTitle.Render("dbk — Backup Jobs"))
+	b.WriteString(styleTitle.Render("Backup Jobs"))
 	b.WriteString("\n")
-	b.WriteString(styleSubtitle.Render("Manage and execute database backup configurations"))
+	b.WriteString(styleSubtitle.Render("Each job backs up one database to a storage"))
 	b.WriteString("\n\n")
 
 	jobs := s.svc.Cfg.Jobs
 	if len(jobs) == 0 {
-		b.WriteString(styleHelp.Render("No jobs configured yet. Press 'a' to add a job."))
+		b.WriteString(styleHelp.Render("No jobs yet. Press 'a' to add your first database."))
 		b.WriteString("\n\n")
 	} else {
 		for i, j := range jobs {
@@ -576,7 +630,7 @@ func (s JobsScreen) View() string {
 				}
 			}
 
-			details := fmt.Sprintf("(%s → %s, keep %d)", j.Engine, j.Storage, j.Retention.KeepLast)
+			details := fmt.Sprintf("(%s → %s, keep %d, %s)", j.Engine, j.Storage, j.Retention.KeepLast, strings.ToLower(describeCron(j.Schedule)))
 			line := fmt.Sprintf("%s%s  %s  %s  %s\n",
 				prefix,
 				itemStyle.Render(j.Name),
@@ -593,6 +647,48 @@ func (s JobsScreen) View() string {
 		b.WriteString(s.statusMsg + "\n\n")
 	}
 
-	b.WriteString(styleHelp.Render("r: Run • a: Add • e: Edit • d: Delete • b: Restore • Esc: Back"))
+	b.WriteString(styleHelp.Render("Enter/r: Back up now • t: Test • a: Add • e: Edit • d: Delete • b: Restore • Esc: Back"))
 	return RenderBox(b.String(), s.width)
+}
+
+// engineDefaults returns the default port and user for a database engine.
+func engineDefaults(engine string) (port, user string) {
+	switch engine {
+	case "postgres":
+		return "5432", "postgres"
+	case "mongodb":
+		return "27017", ""
+	default:
+		return "3306", "root"
+	}
+}
+
+func isDefaultPort(p string) bool {
+	switch strings.TrimSpace(p) {
+	case "", "3306", "5432", "27017":
+		return true
+	}
+	return false
+}
+
+func isDefaultUser(u string) bool {
+	switch strings.TrimSpace(u) {
+	case "", "root", "postgres", "admin":
+		return true
+	}
+	return false
+}
+
+// humanSize formats a byte count as KB/MB/GB.
+func humanSize(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
 }

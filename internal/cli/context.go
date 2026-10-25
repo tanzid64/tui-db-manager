@@ -82,3 +82,18 @@ func loadApp(cmd *cobra.Command) (*appCtx, error) {
 		log:   logutil.New(os.Stderr, logutil.LevelInfo),
 	}, nil
 }
+
+// setJobSchedule records a job's cron expression in the database so the TUI
+// and `dbk schedule status` can show it. Errors are ignored: the OS schedule
+// is the source of truth for whether the job actually runs.
+func (a *appCtx) setJobSchedule(job, expr string) {
+	if a.store == nil {
+		return
+	}
+	for i := range a.cfg.Jobs {
+		if a.cfg.Jobs[i].Name == job {
+			a.cfg.Jobs[i].Schedule = expr
+		}
+	}
+	_ = a.store.SaveConfig(a.cfg)
+}

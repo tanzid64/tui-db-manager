@@ -166,8 +166,10 @@ func TestAppNavigationLifecycle(t *testing.T) {
 		t.Fatalf("expected screenMainMenu after Esc, got %d", app.currentScreen)
 	}
 
-	// Down to Storage (item 1) and enter
-	app.Update(tea.KeyMsg{Type: tea.KeyDown})
+	// Down to Storage (item 3) and enter
+	for i := 0; i < 3; i++ {
+		app.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
 	app.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if app.currentScreen != screenStorage {
 		t.Fatalf("expected screenStorage, got %d", app.currentScreen)
@@ -436,6 +438,7 @@ func TestStorageScreenDynamicWizard(t *testing.T) {
 
 	screen := NewStorageScreen(svc, nil)
 
+	svc.Cfg.Storages = nil // start without the default local storage
 	// --- 1. Test Local storage creation (Step 2 should only have 1 field: path) ---
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	if !screen.isWizardOpen {
@@ -449,15 +452,10 @@ func TestStorageScreenDynamicWizard(t *testing.T) {
 	if screen.wizard.ActiveField != 1 {
 		t.Fatalf("expected active field 1, got %d", screen.wizard.ActiveField)
 	}
-	// Option 0 is "local", Option 1 is "gdrive", Option 2 is "s3"
-	if screen.wizard.Steps[0].Fields[1].Options[0] != "local" {
-		t.Fatalf("expected option 0 to be local, got %s", screen.wizard.Steps[0].Fields[1].Options[0])
-	}
-	if screen.wizard.Steps[0].Fields[1].Options[1] != "gdrive" {
-		t.Fatalf("expected option 1 to be gdrive, got %s", screen.wizard.Steps[0].Fields[1].Options[1])
-	}
-	if screen.wizard.Steps[0].Fields[1].Options[2] != "s3" {
-		t.Fatalf("expected option 2 to be s3, got %s", screen.wizard.Steps[0].Fields[1].Options[2])
+	// Option 0 is "local", Option 1 is "s3", Option 2 is "gdrive"
+	opts := screen.wizard.Steps[0].Fields[1].Options
+	if opts[0] != "local" || opts[1] != "s3" || opts[2] != "gdrive" {
+		t.Fatalf("unexpected storage type options: %v", opts)
 	}
 
 	// Press Enter on Field 1 to advance to Step 1
@@ -473,7 +471,11 @@ func TestStorageScreenDynamicWizard(t *testing.T) {
 		t.Fatalf("expected field key 'path', got %s", screen.wizard.Steps[1].Fields[0].Key)
 	}
 
-	// Enter local path
+	// The path is prefilled with the default folder; replace it.
+	if got := screen.wizard.Steps[1].Fields[0].Input.Value(); got != config.DefaultBackupDir() {
+		t.Fatalf("expected default path prefilled, got %q", got)
+	}
+	screen.wizard.Steps[1].Fields[0].Input.SetValue("")
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/var/backups")})
 	// Press Enter on path (final field of final step) -> should finish!
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -494,10 +496,11 @@ func TestStorageScreenDynamicWizard(t *testing.T) {
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("my-gdrive")})
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter}) // to type select
-	// Right arrow to select gdrive (option 1)
+	// Right arrow twice to select gdrive (option 2)
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
-	if screen.wizard.Steps[0].Fields[1].SelectedOpt != 1 {
-		t.Fatalf("expected selected opt 1 for gdrive")
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if screen.wizard.Steps[0].Fields[1].SelectedOpt != 2 {
+		t.Fatalf("expected selected opt 2 for gdrive")
 	}
 	// Press Enter to advance to Step 1
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -529,44 +532,40 @@ func TestStorageScreenDynamicWizard(t *testing.T) {
 		t.Fatalf("unexpected gdrive storage config: %+v", gSt)
 	}
 
-	// --- 3. Test S3 storage creation (Step 2 should only have 5 fields) ---
+	// --- 3. Test S3 storage creation (bucket, endpoint, region, keys, prefix) ---
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("my-s3")})
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter}) // to type select
-	// Right arrow to select s3 (option 2)
+	// Right arrow to select s3 (option 1)
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
-	if screen.wizard.Steps[0].Fields[1].SelectedOpt != 2 {
-		t.Fatalf("expected selected opt 2 for s3")
+	if screen.wizard.Steps[0].Fields[1].SelectedOpt != 1 {
+		t.Fatalf("expected selected opt 1 for s3")
 	}
-	// Press Enter to advance to Step 1
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if len(screen.wizard.Steps[1].Fields) != 5 {
-		t.Fatalf("expected exactly 5 fields for s3 storage, got %d", len(screen.wizard.Steps[1].Fields))
+	if len(screen.wizard.Steps[1].Fields) != 6 {
+		t.Fatalf("expected 6 fields for s3 storage, got %d", len(screen.wizard.Steps[1].Fields))
 	}
-	// Fill bucket
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("test-bucket")})
-	// Enter to region
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("us-west-2")})
-	// Enter to endpoint (optional, skip)
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	// Enter to access_key
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("AKIA123")})
-	// Enter to secret_key
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("secret456")})
-	// Enter on secret_key finishes!
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	typeAndNext := func(v string) {
+		if v != "" {
+			screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(v)})
+		}
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+	typeAndNext("test-bucket")
+	typeAndNext("acct.r2.cloudflarestorage.com")
+	typeAndNext("us-west-2")
+	typeAndNext("AKIA123")
+	typeAndNext("secret456")
+	typeAndNext("/nightly/")
 	if screen.isWizardOpen {
-		t.Fatalf("expected wizard to close after Enter on s3 secret_key")
+		t.Fatalf("expected wizard to close after the last s3 field: %s", screen.wizard.ErrMessage)
 	}
 	if len(svc.Cfg.Storages) != 3 {
 		t.Fatalf("expected 3 storages saved, got %d", len(svc.Cfg.Storages))
 	}
 	s3St := svc.Cfg.Storages[2]
-	if s3St.Name != "my-s3" || s3St.Type != "s3" || s3St.Bucket != "test-bucket" || s3St.Region != "us-west-2" || s3St.AccessKeyID != "AKIA123" {
+	if s3St.Name != "my-s3" || s3St.Type != "s3" || s3St.Bucket != "test-bucket" || s3St.Region != "us-west-2" || s3St.AccessKeyID != "AKIA123" ||
+		s3St.Endpoint != "https://acct.r2.cloudflarestorage.com" || s3St.Prefix != "nightly" {
 		t.Fatalf("unexpected s3 storage config: %+v", s3St)
 	}
 }
@@ -763,46 +762,128 @@ func TestNotifyScreenEditNotifier(t *testing.T) {
 	}
 }
 
-func TestSettingsScreenScheduleCronValidation(t *testing.T) {
+func TestScheduleScreenInstallAndRemove(t *testing.T) {
 	dir := t.TempDir()
 	svc, err := NewService(dir, "")
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
-	svc.Cfg.Jobs = []config.Job{
-		{Name: "daily-backup", Engine: "mysql"},
-	}
+	svc.Cfg.Jobs = []config.Job{{Name: "daily-backup", Engine: "mysql", Storage: "local"}}
+	_ = svc.SaveConfig()
 
-	screen := NewSettingsScreen(svc, nil, nil)
+	screen := NewScheduleScreen(svc, nil)
 	screen.SetSize(120, 30)
 
-	// Press Enter on option 0 ("Install Automated Job Schedule")
+	// Enter opens the frequency picker for the selected job.
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if !screen.isWizardOpen {
 		t.Fatalf("expected schedule wizard open")
 	}
-
-	// Field 0: job (select) -> press Enter to move to Field 1 (cron text)
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-
-	// Enter invalid 4-field cron
+	// Pick "Custom" (last option) and enter an invalid cron.
+	f := &screen.wizard.Steps[0].Fields[0]
+	f.SelectedOpt = len(f.Options) - 1
 	screen.wizard.Steps[0].Fields[1].Input.SetValue("1 * * *")
+	screen.wizard.ActiveField = 1
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-
-	// Wizard should stay open and show error
-	if !screen.isWizardOpen {
-		t.Fatalf("expected wizard to stay open due to invalid 4-field cron")
-	}
-	if !strings.Contains(screen.wizard.ErrMessage, "must have 5 fields") {
-		t.Fatalf("expected 5 fields error message, got %q", screen.wizard.ErrMessage)
+	if !screen.isWizardOpen || !strings.Contains(screen.wizard.ErrMessage, "5 fields") {
+		t.Fatalf("expected 5-field cron error, got open=%v err=%q", screen.isWizardOpen, screen.wizard.ErrMessage)
 	}
 
-	// Now fix to valid 5-field cron
-	screen.wizard.Steps[0].Fields[1].Input.SetValue("0 2 * * *")
+	screen.wizard.Steps[0].Fields[1].Input.SetValue("30 2 * * *")
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-
 	if screen.isWizardOpen {
-		t.Fatalf("expected wizard to complete and close with valid 5-field cron, err: %s", screen.wizard.ErrMessage)
+		t.Fatalf("expected wizard to close, err: %s", screen.wizard.ErrMessage)
+	}
+	if got := svc.Cfg.Jobs[0].Schedule; got != "30 2 * * *" {
+		t.Fatalf("schedule not saved on job, got %q", got)
+	}
+	st, _ := svc.ScheduleStatus("daily-backup")
+	if !st.Installed {
+		t.Fatalf("expected schedule to be installed in crontab")
+	}
+
+	// Saved schedule survives a reload from the database.
+	svc2, _ := NewService(dir, "")
+	if j, _ := svc2.Cfg.Job("daily-backup"); j.Schedule != "30 2 * * *" {
+		t.Fatalf("schedule not persisted, got %q", j.Schedule)
+	}
+
+	// x turns it off.
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	if svc.Cfg.Jobs[0].Schedule != "" {
+		t.Fatalf("expected schedule cleared")
+	}
+	if st, _ := svc.ScheduleStatus("daily-backup"); st.Installed {
+		t.Fatalf("expected schedule removed from crontab")
+	}
+}
+
+func TestNewServiceCreatesDefaultLocalStorage(t *testing.T) {
+	svc, err := NewService(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc, ok := svc.Cfg.Storage(config.DefaultStorageName)
+	if !ok || sc.Type != "local" || sc.Path != config.DefaultBackupDir() {
+		t.Fatalf("expected default local storage, got %+v (ok=%v)", sc, ok)
+	}
+}
+
+func TestJobWizardSwitchingEngineUsesEngineDefaults(t *testing.T) {
+	svc, err := NewService(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	screen := NewJobsScreen(svc, nil, nil)
+	screen.SetSize(120, 40)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	screen.wizard.Steps[0].Fields[0].Input.SetValue("pg")
+	screen.wizard.Steps[0].Fields[1].SelectedOpt = 1 // postgres
+	screen.wizard.ActiveField = 1
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveStep != 1 {
+		t.Fatalf("expected connection step, got %d (%s)", screen.wizard.ActiveStep, screen.wizard.ErrMessage)
+	}
+	vals := screen.wizard.CollectValues()
+	if vals["port"] != "5432" || vals["user"] != "postgres" {
+		t.Fatalf("expected postgres defaults, got port=%q user=%q", vals["port"], vals["user"])
+	}
+	// The storage step defaults to the built-in local storage.
+	last := screen.wizard.Steps[len(screen.wizard.Steps)-1]
+	if f := last.Fields[0]; f.Options[f.SelectedOpt] != config.DefaultStorageName {
+		t.Fatalf("expected default storage selected, got %q", f.Options[f.SelectedOpt])
+	}
+}
+
+func TestEditingJobKeepsNotifiersAndEncryptionKey(t *testing.T) {
+	svc, err := NewService(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := config.Job{Name: "app", Engine: "mysql", Storage: "local", Encrypt: true, Notifiers: []string{"tg"}}
+	if err := svc.EnsureEncryptionKey(&job); err != nil {
+		t.Fatal(err)
+	}
+	recipient := job.EncryptRecipient
+	if !strings.HasPrefix(recipient, "age1") {
+		t.Fatalf("expected generated age recipient, got %q", recipient)
+	}
+	svc.Cfg.Jobs = []config.Job{job}
+	_ = svc.SaveConfig()
+
+	screen := NewJobsScreen(svc, nil, nil)
+	screen.isEditing = true
+	screen.editingJobName = "app"
+	screen.handleJobWizardFinish(map[string]string{
+		"name": "app", "engine": "mysql", "host": "db", "port": "3306", "user": "u",
+		"database": "app", "storage": "local", "keep_last": "5", "encrypt": "true",
+	})
+	got, _ := svc.Cfg.Job("app")
+	if got.EncryptRecipient != recipient {
+		t.Fatalf("encryption key changed on edit: %q -> %q", recipient, got.EncryptRecipient)
+	}
+	if len(got.Notifiers) != 1 || got.Notifiers[0] != "tg" {
+		t.Fatalf("notifiers lost on edit: %v", got.Notifiers)
 	}
 }
 
@@ -838,5 +919,3 @@ func TestNewServiceWithLegacyEncVaultFallback(t *testing.T) {
 		t.Fatalf("expected secret_key to be saved in vault, got %q (ok=%v)", sec, ok)
 	}
 }
-
-

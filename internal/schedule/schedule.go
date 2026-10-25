@@ -89,21 +89,32 @@ func resolveBinary(opts InstallOptions) (string, error) {
 
 // renderWrapperScript builds the POSIX sh wrapper that a scheduler invokes.
 // It pins PATH so client tools resolve in a stripped scheduler environment,
-// exports DBK_MASTER_KEY if provided, then execs the dbk run command.
-func renderWrapperScript(job, pathValue, masterKey, cmdStr string) string {
+// exports DBK_MASTER_KEY if provided, runs the backup, and appends all output
+// to logFile so failed scheduled runs can be diagnosed.
+func renderWrapperScript(job, pathValue, masterKey, cmdStr, logFile string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "#!/bin/sh\n# dbk schedule wrapper for job %q — managed by dbk, do not edit.\n", job)
+	fmt.Fprintf(&b, "export PATH=%q\n", pathValue)
 	if masterKey != "" {
-		return fmt.Sprintf(`#!/bin/sh
-# dbk schedule wrapper for job %q — managed by dbk, do not edit.
-export PATH=%q
-export DBK_MASTER_KEY=%q
-exec %s
-`, job, pathValue, masterKey, cmdStr)
+		fmt.Fprintf(&b, "export DBK_MASTER_KEY=%q\n", masterKey)
 	}
-	return fmt.Sprintf(`#!/bin/sh
-# dbk schedule wrapper for job %q — managed by dbk, do not edit.
-export PATH=%q
-exec %s
-`, job, pathValue, cmdStr)
+	if logFile == "" {
+		fmt.Fprintf(&b, "exec %s\n", cmdStr)
+		return b.String()
+	}
+	fmt.Fprintf(&b, "LOG=%q\n", logFile)
+	b.WriteString(`mkdir -p "$(dirname "$LOG")"` + "\n")
+	b.WriteString(`echo "[$(date '+%Y-%m-%d %H:%M:%S')] backup started" >> "$LOG"` + "\n")
+	fmt.Fprintf(&b, "%s >> \"$LOG\" 2>&1\n", cmdStr)
+	b.WriteString("status=$?\n")
+	b.WriteString(`echo "[$(date '+%Y-%m-%d %H:%M:%S')] backup finished (exit $status)" >> "$LOG"` + "\n")
+	b.WriteString("exit $status\n")
+	return b.String()
+}
+
+// LogFile returns the log file a scheduled job's wrapper appends to.
+func LogFile(configDir, job string) string {
+	return filepath.Join(configDir, "logs", job+".log")
 }
 
 // writeWrapper renders and writes the wrapper script for a job and returns its
@@ -124,7 +135,13 @@ func writeWrapper(job string, opts InstallOptions) (string, error) {
 		return "", err
 	}
 	pathValue := effectivePath(os.Getenv("PATH"), filepath.Dir(bin), opts.PathOverride)
-	content := renderWrapperScript(job, pathValue, opts.MasterKey, cmdStr)
+	logFile := ""
+	if opts.ConfigDir != "" {
+		if abs, err := filepath.Abs(opts.ConfigDir); err == nil {
+			logFile = LogFile(abs, job)
+		}
+	}
+	content := renderWrapperScript(job, pathValue, opts.MasterKey, cmdStr, logFile)
 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create schedule wrapper directory %s: %w", dir, err)

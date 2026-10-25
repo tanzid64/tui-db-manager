@@ -61,6 +61,11 @@ func newConfigExportCmd() *cobra.Command {
 
 			var v bundle.VaultStore
 			var transferPass string
+			// Always import into the SQLite database when there is one, so the
+			// imported jobs and storages are what later commands actually read.
+			if app.store != nil {
+				v = app.store
+			}
 			if includeSecrets {
 				if app.store != nil && app.store.IsUnlocked() {
 					v = app.store
@@ -150,6 +155,11 @@ func newConfigImportCmd() *cobra.Command {
 
 			var v bundle.VaultStore
 			var transferPass string
+			// Always import into the SQLite database when there is one, so the
+			// imported jobs and storages are what later commands actually read.
+			if app.store != nil {
+				v = app.store
+			}
 
 			if len(b.EncryptedSecrets) > 0 {
 				tp, err := readTransferPassphrase(cmd, "Enter transfer passphrase to decrypt secrets")

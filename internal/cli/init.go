@@ -25,6 +25,15 @@ func newInitCmd() *cobra.Command {
 
 			if store.Exists(dir) {
 				cmd.Printf("dbk database already exists at %s\n", store.Path(dir))
+				if db, err := store.Open(dir, ""); err == nil {
+					defer db.Close()
+					if cfg, err := db.LoadConfig(); err == nil && cfg.EnsureDefaultStorage() {
+						if db.SaveConfig(cfg) == nil {
+							_ = os.MkdirAll(config.DefaultBackupDir(), 0o700)
+							cmd.Printf("default local storage %q -> %s\n", config.DefaultStorageName, config.DefaultBackupDir())
+						}
+					}
+				}
 				return nil
 			}
 
@@ -72,14 +81,19 @@ func newInitCmd() *cobra.Command {
 				if err == nil && migrated {
 					cmd.Println("Migrated existing configuration, secrets, and history into SQLite database.")
 				}
-			} else {
-				// Initialize empty config
-				_ = db.SaveConfig(&config.Config{
-					Version:   config.CurrentVersion,
-					Jobs:      []config.Job{},
-					Storages:  []config.StorageConfig{},
-					Notifiers: []config.NotifierConfig{},
-				})
+			}
+
+			// Every install starts with a ready-to-use local storage.
+			cfg, err := db.LoadConfig()
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+			if cfg.EnsureDefaultStorage() {
+				if err := db.SaveConfig(cfg); err != nil {
+					return fmt.Errorf("save default storage: %w", err)
+				}
+				_ = os.MkdirAll(config.DefaultBackupDir(), 0o700)
+				cmd.Printf("default local storage %q -> %s\n", config.DefaultStorageName, config.DefaultBackupDir())
 			}
 
 			cmd.Printf("initialized dbk config at %s\n", dir)

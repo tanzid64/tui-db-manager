@@ -114,13 +114,27 @@ func (s RestoreScreen) Update(msg tea.Msg) (RestoreScreen, tea.Cmd) {
 		if msg.err != nil {
 			s.statusMsg = styleError.Render("✖ Restore failed: " + msg.err.Error())
 		} else {
-			s.statusMsg = styleSuccess.Render("✔ Database successfully restored!")
+			s.statusMsg = styleSuccess.Render("✔ Restore finished — the database now matches the selected backup")
 			s.state = stateBrowseBackups
 		}
 		return s, nil
 
 	case tea.KeyMsg:
+		if s.loading && msg.String() != "esc" {
+			return s, nil
+		}
 		switch msg.String() {
+		case "tab", "shift+tab":
+			if s.state == stateConfirmRestore {
+				if s.confirmInput.Focused() {
+					s.confirmInput.Blur()
+					s.toDBInput.Focus()
+				} else {
+					s.toDBInput.Blur()
+					s.confirmInput.Focus()
+				}
+				return s, nil
+			}
 		case "esc":
 			switch s.state {
 			case stateConfirmRestore:
@@ -190,6 +204,7 @@ func (s RestoreScreen) Update(msg tea.Msg) (RestoreScreen, tea.Cmd) {
 				if len(s.backups) > 0 && s.selectedObj < len(s.backups) {
 					s.state = stateConfirmRestore
 					s.toDBInput.Reset()
+					s.toDBInput.Blur()
 					s.confirmInput.Reset()
 					s.confirmInput.Focus()
 					s.statusMsg = ""
@@ -227,12 +242,12 @@ func (s RestoreScreen) Update(msg tea.Msg) (RestoreScreen, tea.Cmd) {
 
 func (s RestoreScreen) View() string {
 	var b strings.Builder
-	b.WriteString(styleTitle.Render("dbk — Restore Database"))
+	b.WriteString(styleTitle.Render("Restore"))
 	b.WriteString("\n")
 
 	switch s.state {
 	case stateSelectJob:
-		b.WriteString(styleSubtitle.Render("Select a backup job to browse historical archives:"))
+		b.WriteString(styleSubtitle.Render("Pick the job whose backup you want to restore:"))
 		b.WriteString("\n\n")
 
 		jobs := s.svc.Cfg.Jobs
@@ -275,15 +290,20 @@ func (s RestoreScreen) View() string {
 					prefix = styleSelected.Render("▶ ")
 					itemStyle = styleSelected
 				}
-				modStr := obj.ModTime.Format("2006-01-02 15:04:05")
+				modStr := obj.ModTime.Local().Format("2006-01-02 15:04")
 				if obj.ModTime.IsZero() {
 					modStr = "-"
 				}
-				b.WriteString(fmt.Sprintf("%s%s  %s  %s\n",
+				latest := ""
+				if i == 0 {
+					latest = styleSuccess.Render(" (latest)")
+				}
+				b.WriteString(fmt.Sprintf("%s%s  %s  %s%s\n",
 					prefix,
-					itemStyle.Render(obj.Key),
-					styleSubtitle.Render(fmt.Sprintf("%d bytes", obj.Size)),
-					styleHelp.Render(modStr),
+					itemStyle.Render(modStr),
+					styleSubtitle.Render(humanSize(obj.Size)),
+					styleHelp.Render(obj.Key),
+					latest,
 				))
 			}
 			b.WriteString("\n")
@@ -294,12 +314,17 @@ func (s RestoreScreen) View() string {
 		jobName := jobs[s.selectedJob].Name
 		backupKey := s.backups[s.selectedObj].Key
 
-		b.WriteString(styleSubtitle.Render("Destructive Database Restore Guard"))
+		target := jobs[s.selectedJob].Conn.Database
+		if jobs[s.selectedJob].Conn.Path != "" {
+			target = jobs[s.selectedJob].Conn.Path
+		}
+		b.WriteString(styleSubtitle.Render("Confirm restore"))
 		b.WriteString("\n\n")
-		b.WriteString(styleWarning.Render(fmt.Sprintf("⚠ WARNING: Restoring %q into job %q will overwrite existing data!", backupKey, jobName)))
+		b.WriteString(fmt.Sprintf("Backup:   %s\nJob:      %s\nInto:     %s\n\n", backupKey, jobName, target))
+		b.WriteString(styleWarning.Render("⚠ This replaces the current data in that database."))
 		b.WriteString("\n\n")
 
-		b.WriteString(styleFieldLabel.Render("Target Database / Path override (optional):"))
+		b.WriteString(styleFieldLabel.Render("Restore into a different database instead (optional, Tab to edit):"))
 		b.WriteString("\n")
 		b.WriteString(s.toDBInput.View())
 		b.WriteString("\n\n")
@@ -315,7 +340,7 @@ func (s RestoreScreen) View() string {
 	}
 
 	if s.state == stateConfirmRestore {
-		b.WriteString(styleHelp.Render("Enter: Confirm & Restore • Esc: Cancel"))
+		b.WriteString(styleHelp.Render("Type RESTORE then Enter • Tab: Switch field • Esc: Cancel"))
 	} else {
 		b.WriteString(styleHelp.Render("↑/k, ↓/j: Navigate • Enter: Select • Esc: Back"))
 	}

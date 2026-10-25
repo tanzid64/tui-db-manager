@@ -10,7 +10,18 @@ import (
 
 type Local struct{ root string }
 
-func NewLocal(root string) *Local { return &Local{root: root} }
+// NewLocal returns a local-filesystem backend rooted at root. A leading "~"
+// is expanded to the home directory.
+func NewLocal(root string) *Local { return &Local{root: expandHome(root)} }
+
+func expandHome(p string) string {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		if h, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(h, strings.TrimPrefix(p, "~"))
+		}
+	}
+	return p
+}
 
 func (l *Local) Name() string { return "local" }
 

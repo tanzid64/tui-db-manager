@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tanzid64/tui-db-manager/internal/db"
+	"github.com/tanzid64/tui-db-manager/internal/storage"
 )
 
 func newTestCmd() *cobra.Command {
@@ -56,10 +57,10 @@ func newTestCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if err := be.Test(cmd.Context()); err != nil {
+				if err := storage.Verify(cmd.Context(), be); err != nil {
 					return err
 				}
-				cmd.Printf("storage %q connection OK\n", target)
+				cmd.Printf("storage %q OK (test file written and deleted)\n", target)
 				return nil
 			}
 

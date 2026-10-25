@@ -38,9 +38,13 @@ func NewS3(ctx context.Context, o S3Options) (*S3, error) {
 	if o.Bucket == "" {
 		return nil, fmt.Errorf("s3: bucket is required")
 	}
+	endpoint := NormalizeEndpoint(o.Endpoint)
 	region := o.Region
 	if region == "" {
 		region = "us-east-1"
+		if strings.Contains(endpoint, "r2.cloudflarestorage.com") {
+			region = "auto"
+		}
 	}
 	cfg, err := awscfg.LoadDefaultConfig(ctx,
 		awscfg.WithRegion(region),
@@ -52,15 +56,34 @@ func NewS3(ctx context.Context, o S3Options) (*S3, error) {
 		return nil, err
 	}
 	client := s3.NewFromConfig(cfg, func(p *s3.Options) {
-		if o.Endpoint != "" {
-			p.BaseEndpoint = &o.Endpoint
-		}
 		p.UsePathStyle = o.ForcePathStyle
+		if endpoint != "" {
+			// S3-compatible providers (R2, MinIO, B2, Wasabi, Spaces) all accept
+			// path-style URLs, and several reject the newer default checksum
+			// headers, so only send checksums when the API requires them.
+			p.BaseEndpoint = aws.String(endpoint)
+			p.UsePathStyle = true
+			p.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+			p.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
+		}
 	})
 	return &S3{client: client, bucket: o.Bucket, prefix: o.Prefix}, nil
 }
 
 func (s *S3) Name() string { return "s3" }
+
+// NormalizeEndpoint trims an S3 endpoint and adds "https://" when no scheme
+// is given (e.g. "<account>.r2.cloudflarestorage.com").
+func NormalizeEndpoint(e string) string {
+	e = strings.TrimRight(strings.TrimSpace(e), "/")
+	if e == "" {
+		return ""
+	}
+	if !strings.Contains(e, "://") {
+		e = "https://" + e
+	}
+	return e
+}
 
 func (s *S3) key(k string) string {
 	if s.prefix == "" {

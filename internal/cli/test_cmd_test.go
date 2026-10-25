@@ -43,7 +43,7 @@ notifiers:
 	if err := root.Execute(); err != nil {
 		t.Fatalf("test storage failed: %v", err)
 	}
-	if !strings.Contains(out.String(), "storage \"local-store\" connection OK") {
+	if !strings.Contains(out.String(), "storage \"local-store\" OK") {
 		t.Fatalf("unexpected output for storage: %s", out.String())
 	}
 

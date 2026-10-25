@@ -22,12 +22,12 @@ type MenuScreen struct {
 
 func NewMenuScreen(onSelect func(index int) tea.Cmd) MenuScreen {
 	items := []MenuItem{
-		{Title: "Jobs", Desc: "Configure database backup jobs, run on-demand backups, and view status"},
-		{Title: "Storage", Desc: "Manage storage destinations (Local, AWS S3, Cloudflare R2, Google Drive)"},
-		{Title: "Notifications", Desc: "Manage notification channels (Telegram, Email, Webhooks)"},
-		{Title: "Restore", Desc: "Browse historical backups, verify checksums, and safely restore databases"},
-		{Title: "Settings", Desc: "Vault passphrase, scheduling (cron/systemd/Task Scheduler), export/import"},
-		{Title: "Logs / History", Desc: "View recent backup runs, elapsed durations, sizes, and error details"},
+		{Title: "Backup Jobs", Desc: "Add a database, run a backup now, test the connection"},
+		{Title: "Schedules", Desc: "Back up automatically (daily, hourly, ...)"},
+		{Title: "Restore", Desc: "Pick a backup and restore it into the database"},
+		{Title: "Storage", Desc: "Where backups are kept: local folder, S3/R2 bucket, Google Drive"},
+		{Title: "History", Desc: "Recent backups and restores, with errors"},
+		{Title: "Settings", Desc: "Notifications, export/import, updates, uninstall"},
 		{Title: "Quit", Desc: "Exit dbk"},
 	}
 	return MenuScreen{
@@ -74,7 +74,7 @@ func (m MenuScreen) Update(msg tea.Msg) (MenuScreen, tea.Cmd) {
 
 func (m MenuScreen) View() string {
 	var b strings.Builder
-	b.WriteString(styleTitle.Render("dbk — Secure Database Backup"))
+	b.WriteString(styleTitle.Render("dbk — Database Backup"))
 	b.WriteString("\n")
 	b.WriteString(styleSubtitle.Render("Main Menu"))
 	b.WriteString("\n\n")

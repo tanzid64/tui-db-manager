@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -12,8 +11,7 @@ import (
 type SettingsOption int
 
 const (
-	optScheduleInstall SettingsOption = iota
-	optScheduleRemove
+	optNotifications SettingsOption = iota
 	optExportConfig
 	optImportConfig
 	optCheckUpdate
@@ -31,6 +29,8 @@ type SettingsScreen struct {
 	height        int
 	onBack        func() tea.Cmd
 	onCheckUpdate func() tea.Cmd
+	// onOpenNotifications switches to the notifications screen.
+	onOpenNotifications func() tea.Cmd
 }
 
 func NewSettingsScreen(svc *Service, onBack func() tea.Cmd, onCheckUpdate func() tea.Cmd) SettingsScreen {
@@ -76,7 +76,7 @@ func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		optionsCount := 6
+		optionsCount := 5
 		switch msg.String() {
 		case "esc":
 			if s.onBack != nil {
@@ -105,10 +105,10 @@ func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
 func (s *SettingsScreen) triggerOption(opt SettingsOption) tea.Cmd {
 	s.activeOpt = opt
 	switch opt {
-	case optScheduleInstall:
-		s.openScheduleInstallWizard()
-	case optScheduleRemove:
-		s.openScheduleRemoveWizard()
+	case optNotifications:
+		if s.onOpenNotifications != nil {
+			return s.onOpenNotifications()
+		}
 	case optExportConfig:
 		s.openExportWizard()
 	case optImportConfig:
@@ -121,68 +121,6 @@ func (s *SettingsScreen) triggerOption(opt SettingsOption) tea.Cmd {
 		s.openUninstallWizard()
 	}
 	return nil
-}
-
-func (s *SettingsScreen) openScheduleInstallWizard() {
-	jobNames := make([]string, 0)
-	defaultCron := "0 3 * * *"
-	for i, j := range s.svc.Cfg.Jobs {
-		jobNames = append(jobNames, j.Name)
-		if i == 0 && j.Schedule != "" {
-			defaultCron = j.Schedule
-		}
-	}
-	if len(jobNames) == 0 {
-		s.statusMsg = styleWarning.Render("No jobs available to schedule")
-		return
-	}
-
-	steps := []WizardStep{
-		{
-			Title:       "Schedule Automated Backup",
-			Description: "Select job and cron expression (e.g. '0 3 * * *' for 3 AM daily)",
-			Fields: []WizardField{
-				{Key: "job", Label: "Job", Type: FieldSelect, Options: jobNames},
-				{Key: "cron", Label: "Cron Expression", Placeholder: "0 3 * * *", Value: defaultCron, Type: FieldText},
-			},
-		},
-	}
-	w := NewWizard("Scheduling", steps, nil, nil)
-	w.ValidateStep = func(stepIndex int, vals map[string]string) error {
-		cron := strings.TrimSpace(vals["cron"])
-		if cron == "" {
-			return errors.New("cron expression cannot be empty")
-		}
-		if len(strings.Fields(cron)) != 5 {
-			return fmt.Errorf("cron %q must have 5 fields (minute hour day month weekday), e.g. '0 2 * * *'", cron)
-		}
-		return nil
-	}
-	s.wizard = w
-	s.isWizardOpen = true
-}
-
-func (s *SettingsScreen) openScheduleRemoveWizard() {
-	jobNames := make([]string, 0)
-	for _, j := range s.svc.Cfg.Jobs {
-		jobNames = append(jobNames, j.Name)
-	}
-	if len(jobNames) == 0 {
-		s.statusMsg = styleWarning.Render("No jobs available")
-		return
-	}
-
-	steps := []WizardStep{
-		{
-			Title:       "Remove Scheduled Backup",
-			Description: "Select job schedule to remove from system scheduler",
-			Fields: []WizardField{
-				{Key: "job", Label: "Job to Remove", Type: FieldSelect, Options: jobNames},
-			},
-		},
-	}
-	s.wizard = NewWizard("Scheduling", steps, nil, nil)
-	s.isWizardOpen = true
 }
 
 func (s *SettingsScreen) openExportWizard() {
@@ -234,34 +172,6 @@ func (s *SettingsScreen) openUninstallWizard() {
 
 func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map[string]string) {
 	switch opt {
-	case optScheduleInstall:
-		job := vals["job"]
-		cron := strings.TrimSpace(vals["cron"])
-		if cron == "" {
-			for _, j := range s.svc.Cfg.Jobs {
-				if j.Name == job && j.Schedule != "" {
-					cron = j.Schedule
-					break
-				}
-			}
-		}
-		if cron == "" {
-			cron = "0 3 * * *"
-		}
-		if err := s.svc.InstallSchedule(job, cron); err != nil {
-			s.statusMsg = styleError.Render("✖ Schedule install failed: " + err.Error())
-		} else {
-			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Automated schedule installed for job %q (%s)!", job, cron))
-		}
-
-	case optScheduleRemove:
-		job := vals["job"]
-		if err := s.svc.RemoveSchedule(job); err != nil {
-			s.statusMsg = styleError.Render("✖ Schedule removal failed: " + err.Error())
-		} else {
-			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Schedule removed for job %q!", job))
-		}
-
 	case optExportConfig:
 		dest := strings.TrimSpace(vals["dest"])
 		if dest == "" {
@@ -319,17 +229,16 @@ func (s SettingsScreen) View() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(styleTitle.Render("dbk — System Settings"))
+	b.WriteString(styleTitle.Render("Settings"))
 	b.WriteString("\n")
-	b.WriteString(styleSubtitle.Render("Manage automated schedules, portable bundles, and system updates"))
+	b.WriteString(styleSubtitle.Render("Notifications, portable config bundles, and updates"))
 	b.WriteString("\n\n")
 
 	options := []struct {
 		title string
 		desc  string
 	}{
-		{"Install Automated Job Schedule", "Register unattended backup timer with OS scheduler (systemd/cron/Task Scheduler)"},
-		{"Remove Automated Job Schedule", "Unregister scheduled timer from OS scheduler"},
+		{"Notifications", "Get a Telegram, email, or webhook message when a backup succeeds or fails"},
 		{"Export Configuration Bundle", "Export portable YAML/JSON config bundle with optional transfer-passphrase secrets"},
 		{"Import Configuration Bundle", "Merge external configuration bundle and re-encrypt secrets into local vault"},
 		{"Check for Software Updates", "Check for newer releases of dbk on GitHub and upgrade in-place"},

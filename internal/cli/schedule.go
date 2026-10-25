@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -10,6 +11,12 @@ import (
 )
 
 var defaultScheduler = schedule.DetectScheduler()
+
+// removeAllSchedules removes a job's schedule from every scheduler dbk may
+// have used. Tests replace it so they never touch the real crontab.
+var removeAllSchedules = func(ctx context.Context, job string) error {
+	return schedule.RemoveEverywhere(ctx, job)
+}
 
 func newScheduleCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -63,9 +70,12 @@ func newScheduleInstallCmd() *cobra.Command {
 				MasterKey:      masterKey,
 			}
 
+			// Clear any timer an older dbk version installed elsewhere first.
+			_ = removeAllSchedules(cmd.Context(), job.Name)
 			if err := sched.Install(cmd.Context(), job.Name, opts); err != nil {
 				return fmt.Errorf("install schedule: %w", err)
 			}
+			app.setJobSchedule(job.Name, at)
 
 			jsonOut, _ := cmd.Flags().GetBool("json")
 			if jsonOut {
@@ -103,9 +113,10 @@ func newScheduleRemoveCmd() *cobra.Command {
 			}
 
 			sched := defaultScheduler
-			if err := sched.Remove(cmd.Context(), jobName); err != nil {
+			if err := removeAllSchedules(cmd.Context(), jobName); err != nil {
 				return fmt.Errorf("remove schedule: %w", err)
 			}
+			app.setJobSchedule(jobName, "")
 
 			jsonOut, _ := cmd.Flags().GetBool("json")
 			if jsonOut {

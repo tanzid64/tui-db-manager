@@ -182,4 +182,11 @@ case ":$PATH:" in
     ;;
 esac
 
+# 9. Initialize the database and the default local storage (~/dbk-backups).
+# Safe to re-run on upgrade: existing settings are kept.
+log_info "Setting up dbk (database + default local storage)..."
+if ! "$INSTALL_DIR/dbk" init </dev/null; then
+  log_warn "Initial setup failed. Run '$INSTALL_DIR/dbk init' manually."
+fi
+
 log_info "Installation complete! Run 'dbk' to start the interactive backup manager."

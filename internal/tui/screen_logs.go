@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -27,7 +28,7 @@ func (s *LogsScreen) SetSize(width, height int) {
 }
 
 func (s LogsScreen) Update(msg tea.Msg) (LogsScreen, tea.Cmd) {
-	records := globalHistory.All()
+	records := recentFirst(globalHistory.All(), 20)
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		s.SetSize(msg.Width, msg.Height)
@@ -61,14 +62,14 @@ func (s LogsScreen) Update(msg tea.Msg) (LogsScreen, tea.Cmd) {
 
 func (s LogsScreen) View() string {
 	var b strings.Builder
-	b.WriteString(styleTitle.Render("dbk — Execution Logs & History"))
+	b.WriteString(styleTitle.Render("History"))
 	b.WriteString("\n")
-	b.WriteString(styleSubtitle.Render("History of recent database backup and restore operations"))
+	b.WriteString(styleSubtitle.Render("Last 20 backups and restores, newest first"))
 	b.WriteString("\n\n")
 
-	records := globalHistory.All()
+	records := recentFirst(globalHistory.All(), 20)
 	if len(records) == 0 {
-		b.WriteString(styleHelp.Render("No operations have been recorded yet this session."))
+		b.WriteString(styleHelp.Render("Nothing has run yet. Backups from the TUI, CLI and schedules all show up here."))
 		b.WriteString("\n\n")
 	} else {
 		for i, rec := range records {
@@ -108,4 +109,14 @@ func (s LogsScreen) View() string {
 
 	b.WriteString(styleHelp.Render("↑/k, ↓/j: Scroll history • Esc: Back"))
 	return RenderBox(b.String(), s.width)
+}
+
+// recentFirst returns up to n records ordered newest first.
+func recentFirst(recs []RunRecord, n int) []RunRecord {
+	out := append([]RunRecord(nil), recs...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Started.After(out[j].Started) })
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
 }

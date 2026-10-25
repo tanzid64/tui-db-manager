@@ -35,3 +35,18 @@ type Engine interface {
 type DatabaseLister interface {
 	ListDatabases(ctx context.Context, c Conn) ([]string, error)
 }
+
+// withDefaults fills empty connection fields with sensible defaults so a job
+// saved with blanks still connects to a local server.
+func withDefaults(c Conn, port int, user string) Conn {
+	if c.Host == "" {
+		c.Host = "127.0.0.1"
+	}
+	if c.Port <= 0 {
+		c.Port = port
+	}
+	if c.User == "" {
+		c.User = user
+	}
+	return c
+}

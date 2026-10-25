@@ -18,7 +18,8 @@
 - **Streaming Compression & At-Rest Encryption:**
   - Lightweight streaming **Gzip** compression.
   - Zero-knowledge **age (X25519)** asymmetric encryption at rest—archives uploaded to cloud storage are cryptographically unreadable by the storage provider.
-- **Automated Scheduling:** Native OS scheduling via `systemd user timers` (Linux), `crontab` (Linux/macOS), or `Task Scheduler` (Windows) with automatic environment detection.
+- **Automated Scheduling:** Uses `crontab` whenever it exists (cPanel and VPS alike, keeps running after you log out), falling back to `systemd` user timers. Each scheduled run appends its output to `~/.config/dbk/logs/<job>.log`.
+- **Ready Out of the Box:** Installing creates a default `local` storage at `~/dbk-backups`, so you can add a database and back it up immediately.
 - **Real-Time Notifications:** Instant alerts on backup success or failure via **Telegram Bot API**, **Email (SMTP with STARTTLS/TLS)**, or **Generic Webhooks**.
 - **Hardened Security Model:**
   - Credentials stored in a dedicated local secrets vault (`secrets.json`) with restricted `0600` file permissions, decoupled from `config.yaml`.
@@ -72,12 +73,14 @@ dbk
 ```
 
 When opened, `dbk` launches into the interactive dashboard. If your vault is locked, it will prompt for your Master Key (or read `DBK_MASTER_KEY` from your environment). From the main menu, you can:
-- **Jobs:** Add, configure, test, and trigger database backups.
-- **Storage:** Connect and verify local directories, S3 buckets, or Google Drive folders.
-- **Notifications:** Set up Telegram bots, SMTP email alerts, or HTTP webhooks.
-- **Restore:** Browse historical backups from storage and restore with safety confirmation guards.
-- **Settings:** Install system schedules, export/import configuration bundles, or check for updates.
-- **Logs / History:** Inspect recent runs, execution elapsed times, archive sizes, and error details stored directly in SQLite.
+- **Backup Jobs:** Add a database, test its connection (`t`), and back it up now (`Enter`).
+- **Schedules:** Pick a frequency (daily, every 6/12 hours, hourly, weekly, or custom cron) for each job.
+- **Restore:** Pick a backup (newest first) and restore it after typing `RESTORE` to confirm.
+- **Storage:** The default `local` folder, or an S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, Backblaze B2, Wasabi) or Google Drive. Every storage is tested with a real write when you save it.
+- **History:** The last 20 backups and restores, including scheduled runs, with errors.
+- **Settings:** Notifications (Telegram, email, webhook), export/import, updates, and uninstall.
+
+> **cPanel tip:** use the database user cPanel created (e.g. `account_dbuser`) with host `localhost` or `127.0.0.1`. dbk passes `--no-tablespaces`, so the dump works without the global PROCESS privilege that shared hosting never grants.
 
 ### 2. Headless Automation (CLI)
 
@@ -129,7 +132,7 @@ dbk secret rm job/production-postgres/password
 
 #### Install Automated Schedules
 ```bash
-# Register daily 3:00 AM backup in systemd / crontab / Task Scheduler
+# Register a daily 3:00 AM backup (crontab when available, otherwise systemd)
 dbk schedule install production-postgres --at "0 3 * * *"
 
 # Check scheduler status

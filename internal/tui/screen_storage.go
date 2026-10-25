@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/tanzid64/tui-db-manager/internal/config"
+	"github.com/tanzid64/tui-db-manager/internal/storage"
 )
 
 type StorageScreen struct {
@@ -61,7 +63,11 @@ func (s StorageScreen) Update(msg tea.Msg) (StorageScreen, tea.Cmd) {
 		s.wizard, cmd = s.wizard.Update(msg)
 		if s.wizard.Done {
 			s.isWizardOpen = false
-			s.handleStorageWizardFinish(s.wizard.Values)
+			if name := s.handleStorageWizardFinish(s.wizard.Values); name != "" {
+				// Test right away so a wrong key or bucket shows up now,
+				// not at 3 AM during the first scheduled backup.
+				return s, tea.Batch(cmd, s.testCmd(name))
+			}
 		} else if s.wizard.Canceled {
 			s.isWizardOpen = false
 		}
@@ -73,7 +79,7 @@ func (s StorageScreen) Update(msg tea.Msg) (StorageScreen, tea.Cmd) {
 		if msg.err != nil {
 			s.statusMsg = styleError.Render(fmt.Sprintf("✖ Test %q failed: %v", msg.name, msg.err))
 		} else {
-			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Storage backend %q reachable and operational!", msg.name))
+			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Storage %q works (test file written and deleted)", msg.name))
 		}
 		return s, nil
 
@@ -102,12 +108,7 @@ func (s StorageScreen) Update(msg tea.Msg) (StorageScreen, tea.Cmd) {
 			}
 		case "t":
 			if len(storages) > 0 && s.selected < len(storages) {
-				name := storages[s.selected].Name
-				s.statusMsg = styleWarning.Render(fmt.Sprintf("⟳ Testing connection to %q...", name))
-				return s, func() tea.Msg {
-					err := s.svc.TestStorage(context.Background(), name)
-					return storageTestResultMsg{name: name, err: err}
-				}
+				return s, s.testCmd(storages[s.selected].Name)
 			}
 		case "a":
 			s.openStorageWizard(nil)
@@ -120,6 +121,16 @@ func (s StorageScreen) Update(msg tea.Msg) (StorageScreen, tea.Cmd) {
 		case "d":
 			if len(storages) > 0 && s.selected < len(storages) {
 				delName := storages[s.selected].Name
+				var users []string
+				for _, j := range s.svc.Cfg.Jobs {
+					if j.Storage == delName {
+						users = append(users, j.Name)
+					}
+				}
+				if len(users) > 0 {
+					s.statusMsg = styleError.Render(fmt.Sprintf("✖ Storage %q is used by job(s) %s — change those jobs first", delName, strings.Join(users, ", ")))
+					return s, nil
+				}
 				newStorages := make([]config.StorageConfig, 0)
 				for i, st := range storages {
 					if i != s.selected {
@@ -141,7 +152,7 @@ func (s StorageScreen) Update(msg tea.Msg) (StorageScreen, tea.Cmd) {
 func (s *StorageScreen) openStorageWizard(existing *config.StorageConfig) {
 	nameVal := ""
 	typeIdx := 0
-	typeOptions := []string{"local", "gdrive", "s3"}
+	typeOptions := []string{"local", "s3", "gdrive"}
 
 	pathVal := ""
 	folderVal := ""
@@ -182,29 +193,18 @@ func (s *StorageScreen) openStorageWizard(existing *config.StorageConfig) {
 	} else {
 		s.isEditing = false
 		s.editingStorName = ""
+		pathVal = config.DefaultBackupDir()
 	}
 
-	var paramFields []WizardField
-	stType := typeOptions[typeIdx]
-	switch stType {
-	case "gdrive":
-		paramFields = []WizardField{
-			{Key: "folder_id", Label: "Google Drive Folder ID", Placeholder: "1A2B3C4D5E...", Value: folderVal, Type: FieldText},
-			{Key: "credentials", Label: "Service Account JSON (Vault)", Placeholder: "{\"type\": \"service_account\", ...}", Value: gdriveCreds, Type: FieldText, IsSecret: true},
-		}
-	case "s3":
-		paramFields = []WizardField{
-			{Key: "bucket", Label: "S3 Bucket Name", Placeholder: "my-backups", Value: bucketVal, Type: FieldText},
-			{Key: "region", Label: "Region", Placeholder: "us-east-1", Value: regionVal, Type: FieldText},
-			{Key: "endpoint", Label: "Endpoint URL (optional)", Placeholder: "https://r2.cloudflarestorage.com", Value: endpointVal, Type: FieldText},
-			{Key: "access_key", Label: "Access Key ID", Placeholder: "AKIA...", Value: accessKeyVal, Type: FieldText},
-			{Key: "secret_key", Label: "Secret Key (Vault)", Placeholder: "••••••••", Value: secretKeyVal, Type: FieldText, IsSecret: true},
-		}
-	default: // "local"
-		paramFields = []WizardField{
-			{Key: "path", Label: "Local Directory Path", Placeholder: "/var/backups", Value: pathVal, Type: FieldText},
-		}
+	prefixVal := ""
+	if existing != nil {
+		prefixVal = existing.Prefix
 	}
+	paramFields := storageFields(typeOptions[typeIdx], map[string]string{
+		"path": pathVal, "folder_id": folderVal, "credentials": gdriveCreds,
+		"bucket": bucketVal, "region": regionVal, "endpoint": endpointVal,
+		"access_key": accessKeyVal, "secret_key": secretKeyVal, "prefix": prefixVal,
+	})
 
 	steps := []WizardStep{
 		{
@@ -241,26 +241,10 @@ func (s *StorageScreen) openStorageWizard(existing *config.StorageConfig) {
 		if currentStep == 0 {
 			vals := wiz.CollectValues()
 			chosenType := strings.ToLower(strings.TrimSpace(vals["type"]))
-			var fields []WizardField
-			switch chosenType {
-			case "gdrive":
-				fields = []WizardField{
-					{Key: "folder_id", Label: "Google Drive Folder ID", Placeholder: "1A2B3C4D5E...", Value: vals["folder_id"], Type: FieldText},
-					{Key: "credentials", Label: "Service Account JSON (Vault)", Placeholder: "{\"type\": \"service_account\", ...}", Value: vals["credentials"], Type: FieldText, IsSecret: true},
-				}
-			case "s3":
-				fields = []WizardField{
-					{Key: "bucket", Label: "S3 Bucket Name", Placeholder: "my-backups", Value: vals["bucket"], Type: FieldText},
-					{Key: "region", Label: "Region", Placeholder: "us-east-1", Value: vals["region"], Type: FieldText},
-					{Key: "endpoint", Label: "Endpoint URL (optional)", Placeholder: "https://r2.cloudflarestorage.com", Value: vals["endpoint"], Type: FieldText},
-					{Key: "access_key", Label: "Access Key ID", Placeholder: "AKIA...", Value: vals["access_key"], Type: FieldText},
-					{Key: "secret_key", Label: "Secret Key (Vault)", Placeholder: "••••••••", Value: vals["secret_key"], Type: FieldText, IsSecret: true},
-				}
-			default: // "local"
-				fields = []WizardField{
-					{Key: "path", Label: "Local Directory Path", Placeholder: "/var/backups", Value: vals["path"], Type: FieldText},
-				}
+			if chosenType == "local" && strings.TrimSpace(vals["path"]) == "" {
+				vals["path"] = config.DefaultBackupDir()
 			}
+			fields := storageFields(chosenType, vals)
 			wiz.SetStepFields(1, fields)
 		}
 	}
@@ -285,7 +269,13 @@ func (s *StorageScreen) openStorageWizard(existing *config.StorageConfig) {
 				}
 			case "s3":
 				if strings.TrimSpace(vals["bucket"]) == "" {
-					return errors.New("S3 bucket name cannot be empty")
+					return errors.New("bucket name cannot be empty")
+				}
+				if strings.TrimSpace(vals["access_key"]) == "" {
+					return errors.New("access key ID cannot be empty")
+				}
+				if strings.TrimSpace(vals["secret_key"]) == "" {
+					return errors.New("secret access key cannot be empty")
 				}
 			default: // "local"
 				if strings.TrimSpace(vals["path"]) == "" {
@@ -300,11 +290,13 @@ func (s *StorageScreen) openStorageWizard(existing *config.StorageConfig) {
 	s.isWizardOpen = true
 }
 
-func (s *StorageScreen) handleStorageWizardFinish(vals map[string]string) {
+// handleStorageWizardFinish saves the storage and returns its name, or ""
+// if nothing was saved.
+func (s *StorageScreen) handleStorageWizardFinish(vals map[string]string) string {
 	name := strings.TrimSpace(vals["name"])
 	if name == "" {
 		s.statusMsg = styleError.Render("Storage name cannot be empty")
-		return
+		return ""
 	}
 
 	stType := strings.ToLower(strings.TrimSpace(vals["type"]))
@@ -312,14 +304,23 @@ func (s *StorageScreen) handleStorageWizardFinish(vals map[string]string) {
 		Name: name,
 		Type: stType,
 	}
+	// Keep settings the wizard doesn't show (secret refs, path style).
+	if s.isEditing {
+		if old, ok := s.svc.Cfg.Storage(s.editingStorName); ok && old.Type == stType {
+			sc.SecretKeyRef = old.SecretKeyRef
+			sc.CredentialsRef = old.CredentialsRef
+			sc.ForcePathStyle = old.ForcePathStyle
+		}
+	}
 
 	switch stType {
 	case "local":
-		sc.Path = strings.TrimSpace(vals["path"])
+		sc.Path = config.ExpandPath(vals["path"])
 	case "s3":
 		sc.Bucket = strings.TrimSpace(vals["bucket"])
 		sc.Region = strings.TrimSpace(vals["region"])
-		sc.Endpoint = strings.TrimSpace(vals["endpoint"])
+		sc.Endpoint = storage.NormalizeEndpoint(vals["endpoint"])
+		sc.Prefix = strings.Trim(strings.TrimSpace(vals["prefix"]), "/")
 		sc.AccessKeyID = strings.TrimSpace(vals["access_key"])
 		if sec := strings.TrimSpace(vals["secret_key"]); sec != "" {
 			if s.svc.Vault == nil {
@@ -360,12 +361,56 @@ func (s *StorageScreen) handleStorageWizardFinish(vals map[string]string) {
 			s.svc.Vault.Delete("storage/" + s.editingStorName + "/credentials")
 			_ = s.svc.Vault.Save()
 		}
-		_ = s.svc.SaveConfig()
-		s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Updated storage backend %q", name))
+		// Jobs refer to storage by name, so follow a rename.
+		if s.editingStorName != name {
+			for i := range s.svc.Cfg.Jobs {
+				if s.svc.Cfg.Jobs[i].Storage == s.editingStorName {
+					s.svc.Cfg.Jobs[i].Storage = name
+				}
+			}
+		}
 	} else {
 		s.svc.Cfg.Storages = append(s.svc.Cfg.Storages, sc)
-		_ = s.svc.SaveConfig()
-		s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Added storage backend %q", name))
+	}
+	if err := s.svc.SaveConfig(); err != nil {
+		s.statusMsg = styleError.Render("✖ Could not save storage: " + err.Error())
+		return ""
+	}
+	return name
+}
+
+func (s *StorageScreen) testCmd(name string) tea.Cmd {
+	s.statusMsg = styleWarning.Render(fmt.Sprintf("⟳ Testing storage %q (writing a small test file)...", name))
+	svc := s.svc
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return storageTestResultMsg{name: name, err: svc.TestStorage(ctx, name)}
+	}
+}
+
+// storageFields returns the wizard fields for a storage type, prefilled
+// from vals.
+func storageFields(stType string, vals map[string]string) []WizardField {
+	switch stType {
+	case "gdrive":
+		return []WizardField{
+			{Key: "folder_id", Label: "Google Drive Folder ID", Placeholder: "1A2B3C4D5E... (from the folder URL)", Value: vals["folder_id"], Type: FieldText},
+			{Key: "credentials", Label: "Service Account JSON (paste)", Placeholder: "{\"type\": \"service_account\", ...}", Value: vals["credentials"], Type: FieldText, IsSecret: true},
+		}
+	case "s3":
+		return []WizardField{
+			{Key: "bucket", Label: "Bucket Name", Placeholder: "my-backups", Value: vals["bucket"], Type: FieldText},
+			{Key: "endpoint", Label: "Endpoint (empty = AWS)", Placeholder: "R2: <account-id>.r2.cloudflarestorage.com", Value: vals["endpoint"], Type: FieldText},
+			{Key: "region", Label: "Region", Placeholder: "us-east-1 (R2: auto)", Value: vals["region"], Type: FieldText},
+			{Key: "access_key", Label: "Access Key ID", Placeholder: "AKIA...", Value: vals["access_key"], Type: FieldText},
+			{Key: "secret_key", Label: "Secret Access Key", Placeholder: "••••••••", Value: vals["secret_key"], Type: FieldText, IsSecret: true},
+			{Key: "prefix", Label: "Folder in Bucket (optional)", Placeholder: "dbk", Value: vals["prefix"], Type: FieldText},
+		}
+	default: // "local"
+		return []WizardField{
+			{Key: "path", Label: "Folder Path", Placeholder: config.DefaultBackupDir(), Value: vals["path"], Type: FieldText},
+		}
 	}
 }
 
@@ -375,9 +420,9 @@ func (s StorageScreen) View() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(styleTitle.Render("dbk — Storage Destinations"))
+	b.WriteString(styleTitle.Render("Storage"))
 	b.WriteString("\n")
-	b.WriteString(styleSubtitle.Render("Manage storage backends for backup archiving"))
+	b.WriteString(styleSubtitle.Render("Where backups are kept. s3 works with AWS S3, Cloudflare R2, MinIO, Backblaze B2, Wasabi"))
 	b.WriteString("\n\n")
 
 	storages := s.svc.Cfg.Storages
@@ -398,7 +443,13 @@ func (s StorageScreen) View() string {
 			case "local":
 				loc = st.Path
 			case "s3":
-				loc = fmt.Sprintf("s3://%s (%s)", st.Bucket, st.Region)
+				loc = "s3://" + st.Bucket
+				if st.Prefix != "" {
+					loc += "/" + st.Prefix
+				}
+				if st.Endpoint != "" {
+					loc += " @ " + strings.TrimPrefix(st.Endpoint, "https://")
+				}
 			case "gdrive":
 				loc = fmt.Sprintf("gdrive: %s", st.FolderID)
 			}
@@ -417,6 +468,6 @@ func (s StorageScreen) View() string {
 		b.WriteString(s.statusMsg + "\n\n")
 	}
 
-	b.WriteString(styleHelp.Render("t: Test backend • a: Add • e: Edit • d: Delete • Esc: Back"))
+	b.WriteString(styleHelp.Render("t: Test • a: Add • e: Edit • d: Delete • Esc: Back"))
 	return RenderBox(b.String(), s.width)
 }

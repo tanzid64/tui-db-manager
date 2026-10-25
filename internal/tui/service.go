@@ -2,7 +2,10 @@ package tui
 
 import (
 	"context"
+	"sort"
+
 	"encoding/json"
+	"filippo.io/age"
 	"fmt"
 	"io"
 	"os"
@@ -114,6 +117,11 @@ func NewService(configDir, passFile string) (*Service, error) {
 
 	if s.Cfg == nil {
 		_ = s.ReloadConfig()
+	}
+	// Every install starts with a ready-to-use local storage.
+	if s.Store != nil && s.Cfg != nil && s.Cfg.EnsureDefaultStorage() {
+		_ = s.SaveConfig()
+		_ = os.MkdirAll(config.DefaultBackupDir(), 0o700)
 	}
 	if s.Vault == nil && vault.Exists(dir) {
 		if v, err := vault.Open(dir); err == nil {
@@ -458,7 +466,17 @@ func (s *Service) ListBackups(ctx context.Context, jobName string) ([]storage.Ob
 	if err != nil {
 		return nil, err
 	}
-	return be.List(ctx, job.Name+"/")
+	objs, err := be.List(ctx, job.Name+"/")
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(objs, func(i, j int) bool {
+		if !objs[i].ModTime.Equal(objs[j].ModTime) {
+			return objs[i].ModTime.After(objs[j].ModTime)
+		}
+		return objs[i].Key > objs[j].Key
+	})
+	return objs, nil
 }
 
 func (s *Service) RunRestore(ctx context.Context, jobName, key, toDB string) error {
@@ -521,8 +539,7 @@ func (s *Service) TestStorage(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	_, err = be.List(ctx, "")
-	return err
+	return storage.Verify(ctx, be)
 }
 
 func (s *Service) TestNotifier(ctx context.Context, name string) error {
@@ -542,8 +559,16 @@ func (s *Service) TestNotifier(ctx context.Context, name string) error {
 	})
 }
 
+// schedulerFor and removeAllSchedules are variables so tests can avoid the
+// real system scheduler.
+var (
+	schedulerFor       = schedule.DetectScheduler
+	removeAllSchedules = schedule.RemoveEverywhere
+)
+
+// InstallSchedule registers the job with the OS scheduler (crontab on VPS and
+// cPanel) and remembers the expression on the job.
 func (s *Service) InstallSchedule(jobName, expr string) error {
-	drv := schedule.DetectScheduler()
 	if expr == "" {
 		expr = "0 3 * * *"
 	}
@@ -554,17 +579,96 @@ func (s *Service) InstallSchedule(jobName, expr string) error {
 	if masterKey == "" {
 		masterKey = store.ResolveMasterKey(s.ConfigDir)
 	}
-	return drv.Install(context.Background(), jobName, schedule.InstallOptions{
+	ctx := context.Background()
+	// Clear any timer an older dbk version installed in another scheduler.
+	_ = removeAllSchedules(ctx, jobName)
+	if err := schedulerFor().Install(ctx, jobName, schedule.InstallOptions{
 		Expression:     expr,
 		ConfigDir:      s.ConfigDir,
 		PassphraseFile: s.PassFile,
 		MasterKey:      masterKey,
+	}); err != nil {
+		return err
+	}
+	return s.setJobSchedule(jobName, expr)
+}
+
+// RemoveSchedule unregisters the job from every scheduler and forgets the
+// expression.
+func (s *Service) RemoveSchedule(jobName string) error {
+	if err := removeAllSchedules(context.Background(), jobName); err != nil {
+		return err
+	}
+	return s.setJobSchedule(jobName, "")
+}
+
+// ScheduleStatus reports whether the OS scheduler has the job installed.
+func (s *Service) ScheduleStatus(jobName string) (schedule.ScheduleStatus, error) {
+	return schedulerFor().Status(context.Background(), jobName)
+}
+
+// SchedulerName is the scheduler new schedules are installed into.
+func (s *Service) SchedulerName() string { return schedulerFor().Name() }
+
+// ScheduleLogFile is where scheduled runs of the job write their output.
+func (s *Service) ScheduleLogFile(jobName string) string {
+	return schedule.LogFile(s.ConfigDir, jobName)
+}
+
+func (s *Service) setJobSchedule(jobName, expr string) error {
+	for i := range s.Cfg.Jobs {
+		if s.Cfg.Jobs[i].Name == jobName {
+			s.Cfg.Jobs[i].Schedule = expr
+		}
+	}
+	return s.SaveConfig()
+}
+
+// TestJob checks that the job's database is reachable with its credentials.
+func (s *Service) TestJob(ctx context.Context, jobName string) error {
+	job, ok := s.Cfg.Job(jobName)
+	if !ok {
+		return fmt.Errorf("job %q not found", jobName)
+	}
+	eng, ok := db.Get(job.Engine)
+	if !ok {
+		return fmt.Errorf("unknown engine %q", job.Engine)
+	}
+	pw, err := s.ResolveJobPassword(job)
+	if err != nil {
+		return err
+	}
+	return eng.Test(ctx, db.Conn{
+		Host: job.Conn.Host, Port: job.Conn.Port, User: job.Conn.User,
+		Password: pw, Database: job.Conn.Database, Path: job.Conn.Path, TLS: job.Conn.TLS,
 	})
 }
 
-func (s *Service) RemoveSchedule(jobName string) error {
-	drv := schedule.DetectScheduler()
-	return drv.Remove(context.Background(), jobName)
+// EnsureEncryptionKey makes sure an encrypted job has an age key pair: the
+// public key goes on the job, the private key into the vault. An existing
+// key pair is kept so older backups stay restorable.
+func (s *Service) EnsureEncryptionKey(job *config.Job) error {
+	if !job.Encrypt {
+		return nil
+	}
+	if s.Vault == nil {
+		return fmt.Errorf("vault is not available to store the encryption key")
+	}
+	if job.EncryptRecipient != "" {
+		if _, ok := s.Vault.Get("job/" + job.Name + "/age_identity"); ok {
+			return nil
+		}
+	}
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		return fmt.Errorf("generate encryption key: %w", err)
+	}
+	s.Vault.Set("job/"+job.Name+"/age_identity", id.String())
+	if err := s.Vault.Save(); err != nil {
+		return err
+	}
+	job.EncryptRecipient = id.Recipient().String()
+	return nil
 }
 
 func (s *Service) ExportBundle(destPath, transferPass string, includeSecrets bool) error {
@@ -594,10 +698,9 @@ func (s *Service) ImportBundle(srcPath, transferPass string, overwrite bool) (*b
 
 func (s *Service) Uninstall(ctx context.Context, removeSchedules, purgeData bool) error {
 	if removeSchedules {
-		sched := schedule.DetectScheduler()
 		if s.Cfg != nil {
 			for _, j := range s.Cfg.Jobs {
-				_ = sched.Remove(ctx, j.Name)
+				_ = removeAllSchedules(ctx, j.Name)
 			}
 		}
 		_ = os.RemoveAll(filepath.Join(s.ConfigDir, "schedules"))
