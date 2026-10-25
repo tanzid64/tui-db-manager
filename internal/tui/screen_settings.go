@@ -3,9 +3,11 @@ package tui
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/tanzid64/tui-db-manager/internal/config"
 )
 
 type SettingsOption int
@@ -126,12 +128,12 @@ func (s *SettingsScreen) triggerOption(opt SettingsOption) tea.Cmd {
 func (s *SettingsScreen) openExportWizard() {
 	steps := []WizardStep{
 		{
-			Title:       "Export Configuration Bundle",
-			Description: "Create a portable YAML/JSON bundle",
+			Title:       "Export Settings Backup",
+			Description: "Save jobs, storages, passwords and backup encryption keys to one file. Keep it off this server.",
 			Fields: []WizardField{
-				{Key: "dest", Label: "Destination File", Placeholder: "dbk-export.yaml", Type: FieldText},
-				{Key: "include_secrets", Label: "Include Re-encrypted Secrets", Type: FieldCheckbox, Checked: true},
-				{Key: "transfer_pass", Label: "Transfer Passphrase", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
+				{Key: "dest", Label: "Save To", Placeholder: "~/dbk-settings-backup.yaml", Value: "~/dbk-settings-backup.yaml", Type: FieldText},
+				{Key: "include_secrets", Label: "Include passwords & encryption keys (needed to restore encrypted backups)", Type: FieldCheckbox, Checked: true},
+				{Key: "transfer_pass", Label: "Passphrase to protect the file", Placeholder: "••••••••", Type: FieldText, IsSecret: true},
 			},
 		},
 	}
@@ -178,12 +180,22 @@ func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map
 			s.statusMsg = styleError.Render("Destination path cannot be empty")
 			return
 		}
+		dest = config.ExpandPath(dest)
+		if abs, err := filepath.Abs(dest); err == nil {
+			dest = abs
+		}
 		includeSec := vals["include_secrets"] == "true"
 		pass := vals["transfer_pass"]
+		if includeSec && pass == "" {
+			s.statusMsg = styleError.Render("✖ Enter a passphrase to protect the passwords and keys (you'll need it to import)")
+			return
+		}
 		if err := s.svc.ExportBundle(dest, pass, includeSec); err != nil {
 			s.statusMsg = styleError.Render("✖ Export failed: " + err.Error())
+		} else if includeSec {
+			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Settings, passwords and encryption keys saved to %s — copy it off this server", dest))
 		} else {
-			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Export saved to %s!", dest))
+			s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Settings saved to %s (no passwords or keys)", dest))
 		}
 
 	case optImportConfig:
@@ -239,7 +251,7 @@ func (s SettingsScreen) View() string {
 		desc  string
 	}{
 		{"Notifications", "Get a Telegram, email, or webhook message when a backup succeeds or fails"},
-		{"Export Configuration Bundle", "Export portable YAML/JSON config bundle with optional transfer-passphrase secrets"},
+		{"Export Settings Backup", "Save jobs, storages, passwords and encryption keys to one file"},
 		{"Import Configuration Bundle", "Merge external configuration bundle and re-encrypt secrets into local vault"},
 		{"Check for Software Updates", "Check for newer releases of dbk on GitHub and upgrade in-place"},
 		{"Clean Uninstall & Purge Data", "Remove all scheduled timers, configuration, secrets, and SQLite database"},

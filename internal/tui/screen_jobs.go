@@ -582,7 +582,7 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 		s.selected = len(s.svc.Cfg.Jobs) - 1
 		msg := fmt.Sprintf("✔ Added job %q — press t to test it, r to run a backup now", name)
 		if job.Encrypt {
-			msg += ". Backups are encrypted: keep a copy of the key (Settings → Export, include secrets) or they can't be restored on a new server"
+			msg += ". Backups are encrypted: save a settings backup (Settings → Export Settings Backup) or they can't be restored on a new server"
 		}
 		s.statusMsg = styleSuccess.Render(msg)
 	}
