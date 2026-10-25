@@ -71,4 +71,3 @@ func TestSecretCmdWithLegacyEnc(t *testing.T) {
 		t.Fatalf("expected storage/s3/key in secret ls, got %q", out)
 	}
 }
-

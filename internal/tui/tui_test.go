@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
+	"github.com/tanzid64/tui-db-manager/internal/storage"
 	"github.com/tanzid64/tui-db-manager/internal/update"
 	"strings"
 )
@@ -959,5 +960,33 @@ func TestScheduleCustomCronWinsWithoutSelectingCustom(t *testing.T) {
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if got := svc.Cfg.Jobs[0].Schedule; got != "0 * * * *" {
 		t.Fatalf("expected hourly preset, got %q", got)
+	}
+}
+
+func TestRestoreListsBackupsFromPreviousStorage(t *testing.T) {
+	svc, err := NewService(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldDir, newDir := t.TempDir(), t.TempDir()
+	svc.Cfg.Storages = []config.StorageConfig{
+		{Name: "old-local", Type: "local", Path: oldDir},
+		{Name: "new-local", Type: "local", Path: newDir},
+	}
+	svc.Cfg.Jobs = []config.Job{{Name: "shop", Engine: "mysql", Storage: "new-local"}}
+	ctx := context.Background()
+	_ = storage.NewLocal(oldDir).Put(ctx, "shop/shop-old.sql", strings.NewReader("x"), 1)
+	_ = storage.NewLocal(newDir).Put(ctx, "shop/shop-new.sql", strings.NewReader("x"), 1)
+
+	backups, warnings := svc.ListBackups(ctx, "shop")
+	if len(warnings) != 0 || len(backups) != 2 {
+		t.Fatalf("expected 2 backups from both storages, got %+v (warnings %v)", backups, warnings)
+	}
+	seen := map[string]string{}
+	for _, b := range backups {
+		seen[b.Storage] = b.Key
+	}
+	if seen["old-local"] != "shop/shop-old.sql" || seen["new-local"] != "shop/shop-new.sql" {
+		t.Fatalf("backups not tagged with their storage: %v", seen)
 	}
 }

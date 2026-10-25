@@ -33,18 +33,37 @@ func newRestoreCmd() *cobra.Command {
 				}
 				v = opened
 			}
-			job, ok := app.cfg.Job(args[0])
-			if !ok {
-				return errUnknownJob(args[0])
+			if !yes {
+				return fmt.Errorf("restore not confirmed: re-run with --yes (this overwrites the target database)")
 			}
-			sc, ok := app.cfg.Storage(job.Storage)
+			storageName, _ := cmd.Flags().GetString("storage")
+			// Look in every storage so backups made before the job moved to a
+			// new storage (e.g. local -> S3) can still be restored.
+			found, err := findJobBackups(cmd, app, args[0])
+			if err != nil {
+				return err
+			}
+			chosen, ok := restore.Locate(found, at, storageName)
 			if !ok {
-				return errUnknownStorage(job.Storage)
+				switch {
+				case at != "":
+					return fmt.Errorf("backup %q not found in any storage (run 'dbk list %s')", at, args[0])
+				case storageName != "":
+					return fmt.Errorf("no backups for job %q in storage %q", args[0], storageName)
+				default:
+					return fmt.Errorf("no backups found for job %q", args[0])
+				}
+			}
+			at = chosen.Key
+			sc, ok := app.cfg.Storage(chosen.Storage)
+			if !ok {
+				return errUnknownStorage(chosen.Storage)
 			}
 			be, err := buildBackend(cmd.Context(), sc, v)
 			if err != nil {
 				return err
 			}
+			cmd.PrintErrf("restoring %s from storage %q\n", at, chosen.Storage)
 			deps := restore.Deps{
 				Cfg:             app.cfg,
 				Engine:          engineResolver(),
@@ -75,5 +94,6 @@ func newRestoreCmd() *cobra.Command {
 	}
 	cmd.Flags().String("at", "", "backup key to restore (default: latest)")
 	cmd.Flags().String("to", "", "restore into a different database")
+	cmd.Flags().String("storage", "", "only use backups from this storage (default: search all storages)")
 	return cmd
 }

@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/tanzid64/tui-db-manager/internal/storage"
+	"github.com/tanzid64/tui-db-manager/internal/restore"
 )
 
 type restoreState int
@@ -23,7 +23,7 @@ type RestoreScreen struct {
 	state        restoreState
 	selectedJob  int
 	selectedObj  int
-	backups      []storage.Object
+	backups      []restore.Backup
 	statusMsg    string
 	loading      bool
 	toDBInput    textinput.Model
@@ -34,8 +34,8 @@ type RestoreScreen struct {
 }
 
 type backupListResultMsg struct {
-	objs []storage.Object
-	err  error
+	backups  []restore.Backup
+	warnings []error
 }
 
 type restoreResultMsg struct {
@@ -54,7 +54,7 @@ func NewRestoreScreen(svc *Service, onBack func() tea.Cmd) RestoreScreen {
 		state:        stateSelectJob,
 		selectedJob:  0,
 		selectedObj:  0,
-		backups:      []storage.Object{},
+		backups:      []restore.Backup{},
 		toDBInput:    toDB,
 		confirmInput: conf,
 		onBack:       onBack,
@@ -83,8 +83,8 @@ func (s *RestoreScreen) SelectJob(jobName string) tea.Cmd {
 
 func (s *RestoreScreen) fetchBackups(jobName string) tea.Cmd {
 	return func() tea.Msg {
-		objs, err := s.svc.ListBackups(context.Background(), jobName)
-		return backupListResultMsg{objs: objs, err: err}
+		backups, warnings := s.svc.ListBackups(context.Background(), jobName)
+		return backupListResultMsg{backups: backups, warnings: warnings}
 	}
 }
 
@@ -95,17 +95,18 @@ func (s RestoreScreen) Update(msg tea.Msg) (RestoreScreen, tea.Cmd) {
 		return s, nil
 	case backupListResultMsg:
 		s.loading = false
-		if msg.err != nil {
-			s.statusMsg = styleError.Render("✖ Error listing backups: " + msg.err.Error())
-			s.backups = nil
-		} else {
-			s.backups = msg.objs
-			s.selectedObj = 0
-			if len(msg.objs) == 0 {
-				s.statusMsg = styleWarning.Render("No historical backups found for this job.")
-			} else {
-				s.statusMsg = ""
-			}
+		s.backups = msg.backups
+		s.selectedObj = 0
+		var parts []string
+		for _, w := range msg.warnings {
+			parts = append(parts, "⚠ Could not read "+w.Error())
+		}
+		if len(msg.backups) == 0 && len(msg.warnings) == 0 {
+			parts = append(parts, "No backups found for this job in any storage.")
+		}
+		s.statusMsg = ""
+		if len(parts) > 0 {
+			s.statusMsg = styleWarning.Render(strings.Join(parts, "\n"))
 		}
 		return s, nil
 
@@ -217,13 +218,13 @@ func (s RestoreScreen) Update(msg tea.Msg) (RestoreScreen, tea.Cmd) {
 				}
 				jobs := s.svc.Cfg.Jobs
 				jobName := jobs[s.selectedJob].Name
-				backupKey := s.backups[s.selectedObj].Key
+				chosen := s.backups[s.selectedObj]
 				toDB := strings.TrimSpace(s.toDBInput.Value())
 
 				s.loading = true
 				s.statusMsg = styleWarning.Render("⟳ Executing restore pipeline...")
 				return s, func() tea.Msg {
-					err := s.svc.RunRestore(context.Background(), jobName, backupKey, toDB)
+					err := s.svc.RunRestore(context.Background(), jobName, chosen.Storage, chosen.Key, toDB)
 					return restoreResultMsg{err: err}
 				}
 			}
@@ -273,7 +274,7 @@ func (s RestoreScreen) View() string {
 		if len(jobs) > s.selectedJob {
 			jobName = jobs[s.selectedJob].Name
 		}
-		b.WriteString(styleSubtitle.Render(fmt.Sprintf("Browsing backups for job: %s", styleSelected.Render(jobName))))
+		b.WriteString(styleSubtitle.Render(fmt.Sprintf("Backups for job %s (from all storages, newest first):", styleSelected.Render(jobName))))
 		b.WriteString("\n\n")
 
 		if s.loading {
@@ -298,10 +299,11 @@ func (s RestoreScreen) View() string {
 				if i == 0 {
 					latest = styleSuccess.Render(" (latest)")
 				}
-				b.WriteString(fmt.Sprintf("%s%s  %s  %s%s\n",
+				b.WriteString(fmt.Sprintf("%s%s  %s  %s  %s%s\n",
 					prefix,
 					itemStyle.Render(modStr),
-					styleSubtitle.Render(humanSize(obj.Size)),
+					styleSubtitle.Render(fmt.Sprintf("%-9s", humanSize(obj.Size))),
+					styleFieldLabel.Render("["+obj.Storage+"]"),
 					styleHelp.Render(obj.Key),
 					latest,
 				))
@@ -313,6 +315,7 @@ func (s RestoreScreen) View() string {
 		jobs := s.svc.Cfg.Jobs
 		jobName := jobs[s.selectedJob].Name
 		backupKey := s.backups[s.selectedObj].Key
+		fromStorage := s.backups[s.selectedObj].Storage
 
 		target := jobs[s.selectedJob].Conn.Database
 		if jobs[s.selectedJob].Conn.Path != "" {
@@ -320,7 +323,7 @@ func (s RestoreScreen) View() string {
 		}
 		b.WriteString(styleSubtitle.Render("Confirm restore"))
 		b.WriteString("\n\n")
-		b.WriteString(fmt.Sprintf("Backup:   %s\nJob:      %s\nInto:     %s\n\n", backupKey, jobName, target))
+		b.WriteString(fmt.Sprintf("Backup:   %s\nFrom:     %s storage\nJob:      %s\nInto:     %s\n\n", backupKey, fromStorage, jobName, target))
 		b.WriteString(styleWarning.Render("⚠ This replaces the current data in that database."))
 		b.WriteString("\n\n")
 

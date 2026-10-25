@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"sort"
 
 	"encoding/json"
 	"filippo.io/age"
@@ -453,33 +452,18 @@ func (s *Service) RunBackup(ctx context.Context, jobName string) (RunRecord, err
 	return rec, nil
 }
 
-func (s *Service) ListBackups(ctx context.Context, jobName string) ([]storage.Object, error) {
-	job, ok := s.Cfg.Job(jobName)
-	if !ok {
-		return nil, fmt.Errorf("job %q not found", jobName)
-	}
-	sc, ok := s.Cfg.Storage(job.Storage)
-	if !ok {
-		return nil, fmt.Errorf("storage %q not found", job.Storage)
-	}
-	be, err := s.BuildBackend(ctx, sc)
-	if err != nil {
-		return nil, err
-	}
-	objs, err := be.List(ctx, job.Name+"/")
-	if err != nil {
-		return nil, err
-	}
-	sort.Slice(objs, func(i, j int) bool {
-		if !objs[i].ModTime.Equal(objs[j].ModTime) {
-			return objs[i].ModTime.After(objs[j].ModTime)
-		}
-		return objs[i].Key > objs[j].Key
+// ListBackups lists the job's backups in every configured storage, newest
+// first. Backups in a storage that can't be read are skipped and its error is
+// returned in warnings.
+func (s *Service) ListBackups(ctx context.Context, jobName string) (backups []restore.Backup, warnings []error) {
+	return restore.FindBackups(ctx, s.Cfg, jobName, func(sc config.StorageConfig) (storage.Backend, error) {
+		return s.BuildBackend(ctx, sc)
 	})
-	return objs, nil
 }
 
-func (s *Service) RunRestore(ctx context.Context, jobName, key, toDB string) error {
+// RunRestore restores the backup key from the named storage. An empty
+// storageName means the job's current storage.
+func (s *Service) RunRestore(ctx context.Context, jobName, storageName, key, toDB string) error {
 	start := time.Now()
 	rec := RunRecord{
 		ID:      fmt.Sprintf("restore-%s-%d", jobName, start.Unix()),
@@ -494,9 +478,12 @@ func (s *Service) RunRestore(ctx context.Context, jobName, key, toDB string) err
 	if !ok {
 		return fmt.Errorf("job %q not found", jobName)
 	}
-	sc, ok := s.Cfg.Storage(job.Storage)
+	if storageName == "" {
+		storageName = job.Storage
+	}
+	sc, ok := s.Cfg.Storage(storageName)
 	if !ok {
-		return fmt.Errorf("storage %q not found", job.Storage)
+		return fmt.Errorf("storage %q not found", storageName)
 	}
 	be, err := s.BuildBackend(ctx, sc)
 	if err != nil {

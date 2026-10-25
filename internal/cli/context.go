@@ -97,3 +97,13 @@ func (a *appCtx) setJobSchedule(job, expr string) {
 	}
 	_ = a.store.SaveConfig(a.cfg)
 }
+
+// secrets returns the unlocked database as the secret store, falling back to
+// a legacy vault file when present.
+func (a *appCtx) secrets() SecretGetter {
+	if a.store != nil && a.store.IsUnlocked() {
+		return a.store
+	}
+	v, _ := maybeOpenVault(a.dir)
+	return v
+}

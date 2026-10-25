@@ -158,4 +158,3 @@ jobs:
 		t.Errorf("expected cfgDir %s to be purged", cfgDir)
 	}
 }
-
