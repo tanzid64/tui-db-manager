@@ -357,6 +357,48 @@
   .cli-row span { font-size: .9rem; color: var(--muted); }
   .cli-row .cmd { padding: 8px 8px 8px 12px; font-size: .82rem; }
 
+  /* ---------- GitHub star ---------- */
+  .star-btn {
+    display: inline-flex; align-items: stretch; text-decoration: none;
+    border-radius: 10px; overflow: hidden; font-weight: 600; font-size: .9rem;
+    border: 1px solid #d4a017; box-shadow: 0 0 0 0 rgba(245, 180, 0, .5);
+  }
+  .star-btn .lbl {
+    display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px;
+    background: linear-gradient(180deg, #fde68a, #fbbf24); color: #3b2a00;
+  }
+  .star-btn .lbl svg { width: 16px; height: 16px; fill: currentColor; }
+  .star-btn .count {
+    display: inline-flex; align-items: center; padding: 7px 11px;
+    background: var(--card); color: var(--text); font-variant-numeric: tabular-nums;
+    border-left: 1px solid #d4a017;
+  }
+  .star-btn .count:empty { display: none; }
+  .star-btn:hover .lbl { background: linear-gradient(180deg, #fef3c7, #fcd34d); }
+  .star-btn:hover svg { transform: rotate(-12deg) scale(1.15); }
+  .star-btn svg { transition: transform .2s; }
+  .star-btn.big { font-size: 1rem; }
+  .star-btn.big .lbl, .star-btn.big .count { padding: 11px 16px; }
+  .star-btn.big .lbl svg { width: 18px; height: 18px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .star-btn.pulse { animation: starPulse 2.4s ease-out 1.2s 2; }
+  }
+  @keyframes starPulse {
+    0% { box-shadow: 0 0 0 0 rgba(245, 180, 0, .55); }
+    100% { box-shadow: 0 0 0 14px rgba(245, 180, 0, 0); }
+  }
+  .nav-star { margin-left: 4px; }
+  @media (max-width: 860px) { .nav-star .count { display: none; } .nav-star .lbl { padding: 7px 10px; } }
+  .star-cta {
+    display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between;
+    padding: 32px; border-radius: 18px;
+    background: linear-gradient(135deg, color-mix(in srgb, #fbbf24 16%, var(--card)), var(--card) 60%);
+    border: 1px solid color-mix(in srgb, #fbbf24 45%, var(--border));
+  }
+  .star-cta h2 { font-size: clamp(1.4rem, 3vw, 1.9rem); }
+  .star-cta p { margin: 8px 0 0; color: var(--muted); max-width: 560px; }
+  .star-cta .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
   /* ---------- Footer / toast ---------- */
   footer { border-top: 1px solid var(--border); padding: 32px 0 48px; color: var(--muted); font-size: .9rem; }
   .foot { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; }
@@ -384,6 +426,7 @@
       <a href="#cli">Commands</a>
       <a class="gh-link" href="https://github.com/tanzid64/tui-db-manager">GitHub ↗</a>
     </nav>
+    <a class="star-btn nav-star" href="https://github.com/tanzid64/tui-db-manager" title="Star dbk on GitHub" aria-label="Star dbk on GitHub"><span class="lbl"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8z"/></svg>Star</span><span class="count" data-stars></span></a>
     <button class="icon-btn" id="theme-btn" aria-label="Toggle light/dark theme" title="Toggle theme">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
     </button>
@@ -412,8 +455,9 @@
 
       <div class="hero-actions">
         <a class="btn btn-primary" href="#steps">See the 5 steps →</a>
-        <a class="btn btn-ghost" href="https://github.com/tanzid64/tui-db-manager/releases/latest">Download binaries</a>
+        <a class="star-btn big pulse" href="https://github.com/tanzid64/tui-db-manager" title="Star dbk on GitHub"><span class="lbl"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8z"/></svg>Star on GitHub</span><span class="count" data-stars></span></a>
       </div>
+      <p class="hero-sub" style="margin:12px 0 0;">Free forever. If dbk saves you time, a ⭐ helps other people find it. Prefer manual install? <a href="https://github.com/tanzid64/tui-db-manager/releases/latest">Download binaries</a>.</p>
 
       <div class="works-with" aria-label="Supported databases and storage">
         <span class="chip">MySQL / MariaDB</span>
@@ -878,13 +922,30 @@ default local storage "local" -> /home/you/dbk-backups
   </div>
 </section>
 
+<!-- ================= STAR CTA ================= -->
+<section id="star" style="border-top:0; padding-top:24px;">
+  <div class="wrap">
+    <div class="star-cta">
+      <div>
+        <p class="eyebrow" style="color:#b7791f;">Support the project</p>
+        <h2>Enjoying dbk? Give it a ⭐ on GitHub</h2>
+        <p>dbk is free and open source. A star takes one click, keeps the project going, and helps other developers and hosting users find it.</p>
+      </div>
+      <div class="actions">
+        <a class="star-btn big" href="https://github.com/tanzid64/tui-db-manager" title="Star dbk on GitHub"><span class="lbl"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8z"/></svg>Star dbk</span><span class="count" data-stars></span></a>
+        <a class="btn btn-ghost" href="https://github.com/tanzid64/tui-db-manager/issues">Suggest a feature</a>
+      </div>
+    </div>
+  </div>
+</section>
+
 </main>
 
 <footer>
   <div class="wrap foot">
     <span>dbk v1.0.0 · MIT licensed · by <a href="https://github.com/tanzid64">tanzid64</a></span>
     <span>
-      <a href="https://github.com/tanzid64/tui-db-manager">GitHub</a> ·
+      <a href="https://github.com/tanzid64/tui-db-manager">⭐ Star on GitHub</a> ·
       <a href="https://github.com/tanzid64/tui-db-manager/releases/latest">Releases</a> ·
       <a href="https://github.com/tanzid64/tui-db-manager/issues">Report a problem</a>
     </span>
@@ -987,6 +1048,31 @@ default local storage "local" -> /home/you/dbk-backups
   });
 
   tabGroup(Array.prototype.slice.call(document.querySelectorAll('#storage .tab')));
+
+  /* Live GitHub star count (cached for an hour; buttons work without it). */
+  function showStars(n) {
+    // Hide the number until there is at least one star; "0" discourages clicks.
+    if (typeof n !== 'number' || n < 1) return;
+    var txt = n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n);
+    document.querySelectorAll('[data-stars]').forEach(function (el) {
+      el.textContent = txt;
+      el.setAttribute('aria-label', n + ' stars');
+    });
+  }
+  var cached = null;
+  try { cached = JSON.parse(localStorage.getItem('dbk-stars') || 'null'); } catch (e) {}
+  if (cached && Date.now() - cached.t < 3600 * 1000) {
+    showStars(cached.n);
+  } else if (window.fetch) {
+    fetch('https://api.github.com/repos/tanzid64/tui-db-manager')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || typeof d.stargazers_count !== 'number') return;
+        showStars(d.stargazers_count);
+        try { localStorage.setItem('dbk-stars', JSON.stringify({ n: d.stargazers_count, t: Date.now() })); } catch (e) {}
+      })
+      .catch(function () {});
+  }
 })();
 </script>
 </body>
