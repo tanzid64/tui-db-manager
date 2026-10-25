@@ -303,8 +303,9 @@
   .note p { margin: 0; }
 
   /* ---------- Cards / grids ---------- */
-  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .grid-3 > *, .grid-2 > * { min-width: 0; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
   @media (max-width: 860px) { .grid-3, .grid-2 { grid-template-columns: 1fr; } }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; }
   .card h3 { margin-bottom: 6px; }
@@ -422,6 +423,7 @@
       <a href="#steps">How it works</a>
       <a href="#storage">Storage</a>
       <a href="#hosting">VPS &amp; cPanel</a>
+      <a href="#security">Security</a>
       <a href="#help">Help</a>
       <a href="#cli">Commands</a>
       <a class="gh-link" href="https://github.com/tanzid64/tui-db-manager">GitHub ↗</a>
@@ -442,7 +444,7 @@
 <section class="hero">
   <div class="wrap hero-grid">
     <div>
-      <span class="pill"><span class="dot"></span>v1.0.0 — free &amp; open source</span>
+      <span class="pill"><span class="dot"></span>v1.1.0 — free &amp; open source</span>
       <h1>Database backups that <span class="grad">just work</span> on your VPS or cPanel.</h1>
       <p class="lead">Install with one command, add your database, pick how often to back it up. Restoring is just as easy: pick a backup and confirm.</p>
 
@@ -467,6 +469,7 @@
         <span class="chip">Local folder</span>
         <span class="chip">AWS S3 · R2 · B2 · MinIO</span>
         <span class="chip">Google Drive</span>
+        <span class="chip">🔒 Encrypted by default</span>
       </div>
     </div>
 
@@ -486,7 +489,7 @@
   History
     <span class="t-dim">Recent backups and restores, with errors</span>
   Settings
-    <span class="t-dim">Notifications, export/import, updates, uninstall</span>
+    <span class="t-dim">Notifications, settings backup, updates</span>
 
 <span class="t-dim">↑/↓ Navigate • Enter Select • q Quit</span></pre>
     </div>
@@ -519,7 +522,7 @@
           <div class="term">
             <div class="term-bar"><i></i><i></i><i></i><span>terminal</span></div>
 <pre><span class="t-green">$</span> curl -fsSL https://raw.githubusercontent.com/tanzid64/tui-db-manager/main/install.sh | sh
-<span class="t-green">==></span> Downloading dbk v1.0.0 for linux/amd64...
+<span class="t-green">==></span> Downloading dbk v1.1.0 for linux/amd64...
 <span class="t-green">==></span> Checksum verified
 <span class="t-green">==></span> Installing to /usr/local/bin/dbk...
 <span class="t-green">==></span> Setting up dbk (database + default local storage)...
@@ -555,8 +558,9 @@ default local storage "local" -> /home/you/dbk-backups
             <li><span><strong>Name &amp; type</strong> — any name (e.g. <code>shop</code>), then MySQL/MariaDB, PostgreSQL, MongoDB or SQLite (<kbd>←</kbd> <kbd>→</kbd> to choose).</span></li>
             <li><span><strong>Connection</strong> — host, port, user, password. Ports and users fill in for the type you picked.</span></li>
             <li><span><strong>Database</strong> — dbk lists the databases it can see; pick one.</span></li>
-            <li><span><strong>Storage &amp; keep</strong> — <code>local</code> is preselected. Keep last <code>7</code> backups and gzip compression are on by default.</span></li>
+            <li><span><strong>Storage &amp; keep</strong> — <code>local</code> is preselected. Keep last <code>7</code> backups, gzip compression and <strong>Encrypt backups</strong> are on by default.</span></li>
           </ul>
+          <div class="note warn"><span class="ic">🔑</span><p><strong>Encrypted backups need their key to restore.</strong> The key is kept on this server. After adding a job, save a <a href="#settings-backup">settings backup</a> somewhere else, so you can restore even if the server is lost.</p></div>
           <div class="note"><span class="ic">💡</span><p><strong>On cPanel</strong>, use the database user cPanel created (it starts with your account name, like <code>myaccount_shop</code>) and host <code>localhost</code> or <code>127.0.0.1</code>.</p></div>
           <div class="cli-alt">
             <p>Prefer files? Import jobs from a bundle, then store the password:</p>
@@ -831,8 +835,75 @@ default local storage "local" -> /home/you/dbk-backups
   </div>
 </section>
 
+<!-- ================= SECURITY ================= -->
+<section id="security" style="background: var(--bg-soft);">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Security</p>
+      <h2>Your data stays yours</h2>
+      <p>dbk runs on your server. No account, no outside service, and no one else sees your passwords or backups.</p>
+    </div>
+
+    <div class="grid-3">
+      <div class="card">
+        <div class="big-ic">🔒</div>
+        <h3>Encrypted backups <span class="tag">Default</span></h3>
+        <p>New jobs encrypt every backup with <code>age</code> before it leaves the server. S3, R2 or Google Drive only store unreadable <code>.age</code> files. Jobs that send unencrypted backups to the cloud are marked <strong>⚠ not encrypted</strong>.</p>
+      </div>
+      <div class="card">
+        <div class="big-ic">🗝️</div>
+        <h3>Random master key</h3>
+        <p>Each install gets its own random key that protects saved passwords (XChaCha20-Poly1305, Argon2id). Upgrading from 1.0.0 switches you to a random key automatically. Your schedules keep running.</p>
+      </div>
+      <div class="card">
+        <div class="big-ic">🙈</div>
+        <h3>Passwords stay hidden</h3>
+        <p>Database passwords go to the dump tools through environment variables, never the command line, so other users can't see them in <code>ps</code>. Schedule scripts don't contain your key.</p>
+      </div>
+      <div class="card">
+        <div class="big-ic">📂</div>
+        <h3>Private files</h3>
+        <p>Settings, the password vault, logs and local backups are readable only by your user (<code>0600</code>/<code>0700</code>).</p>
+      </div>
+      <div class="card">
+        <div class="big-ic">🏠</div>
+        <h3>Nothing leaves without you</h3>
+        <p>No sign-up, no tracking, no third-party backup service. Backups go only to storage you add.</p>
+      </div>
+      <div class="card">
+        <div class="big-ic">✅</div>
+        <h3>Checked updates</h3>
+        <p><code>dbk update</code> verifies the download's SHA-256 checksum before replacing the program.</p>
+      </div>
+    </div>
+
+    <h3 id="settings-backup" style="margin-top:48px;">Back up your settings (and your keys)</h3>
+    <p style="color:var(--muted);margin:6px 0 0;">Your backups are only half the story. To restore on a new server you also need your jobs, storages, passwords and the <strong>encryption keys</strong>. Save them in one file, protected by a passphrase you choose. Do this after adding or changing a job.</p>
+
+    <div class="grid-2" style="margin-top:20px;">
+      <div class="card">
+        <h3>In the app</h3>
+        <ul class="do-list">
+          <li><span>Open <strong>Settings → Export Settings Backup</strong>.</span></li>
+          <li><span>Keep <strong>Include passwords &amp; encryption keys</strong> ticked and enter a passphrase. Remember it: you'll need it to import.</span></li>
+          <li><span>dbk saves <code>~/dbk-settings-backup.yaml</code>. Copy it off the server (your computer, a password manager, a different bucket).</span></li>
+          <li><span>On a new server: install dbk, then <strong>Settings → Import</strong> the file with the same passphrase. Your old backups show up in <strong>Restore</strong>.</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>From the command line</h3>
+        <div class="cli-row"><span>Save settings, passwords and keys (asks for a passphrase)</span><div class="cmd"><span class="text" id="sb1">dbk config export ~/dbk-settings-backup.yaml --include-secrets</span><button class="copy" data-copy="#sb1">Copy</button></div></div>
+        <div class="cli-row"><span>Copy it to your computer (run this on your computer)</span><div class="cmd"><span class="text" id="sb2">scp user@server:dbk-settings-backup.yaml .</span><button class="copy" data-copy="#sb2">Copy</button></div></div>
+        <div class="cli-row"><span>Restore on a new server (asks for the passphrase)</span><div class="cmd"><span class="text" id="sb3">dbk config import dbk-settings-backup.yaml</span><button class="copy" data-copy="#sb3">Copy</button></div></div>
+      </div>
+    </div>
+
+    <div class="note warn"><span class="ic">⚠</span><p><strong>Don't keep the settings backup only on the same server or in the same bucket as your backups.</strong> Anyone with both the file and its passphrase can read your backups, and if the server is lost with the only copy, encrypted backups can't be restored.</p></div>
+  </div>
+</section>
+
 <!-- ================= HELP ================= -->
-<section id="help" style="background: var(--bg-soft);">
+<section id="help">
   <div class="wrap">
     <div class="section-head">
       <p class="eyebrow">Help</p>
@@ -865,7 +936,19 @@ default local storage "local" -> /home/you/dbk-backups
       </details>
       <details>
         <summary>Where are my passwords stored? Are they safe?</summary>
-        <div class="ans"><p>In <code>~/.config/dbk/dbk.db</code>, encrypted, with file permissions that only your user can read. They're passed to the dump tools through environment variables, never on the command line, so other users can't see them in the process list.</p></div>
+        <div class="ans"><p>In <code>~/.config/dbk/dbk.db</code>, encrypted with a random master key that's unique to your install (saved in <code>~/.config/dbk/env</code>). Both files are readable only by your user. Passwords are passed to the dump tools through environment variables, never on the command line, so other users can't see them in the process list. See <a href="#security">Security</a>.</p></div>
+      </details>
+      <details>
+        <summary>My server died. How do I restore my encrypted backups?</summary>
+        <div class="ans">
+          <p>You need your <a href="#settings-backup">settings backup</a> file and its passphrase. On the new server, install dbk and import it:</p>
+          <div class="cmd"><span class="prompt">$</span><span class="text" id="f9">dbk config import dbk-settings-backup.yaml</span><button class="copy" data-copy="#f9">Copy</button></div>
+          <p>Your jobs, storages, passwords and keys come back, and <strong>Restore</strong> lists the backups in your bucket. Without the settings backup, encrypted backups can't be opened, so save one today.</p>
+        </div>
+      </details>
+      <details>
+        <summary>I updated from 1.0.0 and see "replaced the default master key"</summary>
+        <div class="ans"><p>That's expected and only happens once. Version 1.0.0 used the same built-in key on every install. 1.1.0 replaces it with a random one, re-encrypts your saved passwords and updates your schedules, which keep running. Nothing to do, but it's a good moment to save a new <a href="#settings-backup">settings backup</a>.</p></div>
       </details>
       <details>
         <summary>How do I update dbk?</summary>
@@ -909,9 +992,9 @@ default local storage "local" -> /home/you/dbk-backups
         <div class="cli-row"><span>Test a job or a storage</span><div class="cmd"><span class="text" id="k8">dbk test shop</span><button class="copy" data-copy="#k8">Copy</button></div></div>
       </div>
       <div class="card">
-        <h3>Move to another server</h3>
-        <div class="cli-row"><span>Export jobs and storages, plus passwords protected by a passphrase you choose</span><div class="cmd"><span class="text" id="k9">dbk config export dbk-export.yaml --include-secrets</span><button class="copy" data-copy="#k9">Copy</button></div></div>
-        <div class="cli-row"><span>Import on the new server (asks for that passphrase)</span><div class="cmd"><span class="text" id="k10">dbk config import dbk-export.yaml</span><button class="copy" data-copy="#k10">Copy</button></div></div>
+        <h3>Settings backup &amp; moving servers</h3>
+        <div class="cli-row"><span>Save jobs, storages, passwords and encryption keys (asks for a passphrase)</span><div class="cmd"><span class="text" id="k9">dbk config export ~/dbk-settings-backup.yaml --include-secrets</span><button class="copy" data-copy="#k9">Copy</button></div></div>
+        <div class="cli-row"><span>Import on the new server (asks for that passphrase)</span><div class="cmd"><span class="text" id="k10">dbk config import dbk-settings-backup.yaml</span><button class="copy" data-copy="#k10">Copy</button></div></div>
       </div>
       <div class="card">
         <h3>Maintenance</h3>
