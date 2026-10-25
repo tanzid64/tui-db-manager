@@ -919,3 +919,45 @@ func TestNewServiceWithLegacyEncVaultFallback(t *testing.T) {
 		t.Fatalf("expected secret_key to be saved in vault, got %q (ok=%v)", sec, ok)
 	}
 }
+
+func TestScheduleCustomCronWinsWithoutSelectingCustom(t *testing.T) {
+	svc, err := NewService(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.Cfg.Jobs = []config.Job{{Name: "TEST", Engine: "mysql", Storage: "local"}}
+	_ = svc.SaveConfig()
+	screen := NewScheduleScreen(svc, nil)
+
+	// "*****" (no spaces) is rejected with a hint, and nothing is installed.
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	screen.wizard.Steps[0].Fields[1].Input.SetValue("*****")
+	screen.wizard.ActiveField = 1
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !screen.isWizardOpen || !strings.Contains(screen.wizard.ErrMessage, "spaces") {
+		t.Fatalf("expected spacing hint, got open=%v err=%q", screen.isWizardOpen, screen.wizard.ErrMessage)
+	}
+
+	// Frequency left on "Every day at 03:00", custom typed: custom wins.
+	screen.wizard.Steps[0].Fields[1].Input.SetValue("* * * * *")
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.isWizardOpen {
+		t.Fatalf("wizard should close: %s", screen.wizard.ErrMessage)
+	}
+	if got := svc.Cfg.Jobs[0].Schedule; got != "* * * * *" {
+		t.Fatalf("expected custom cron saved, got %q", got)
+	}
+
+	// Reopening shows Custom with the value; picking a preset then uses it.
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	f := &screen.wizard.Steps[0].Fields[0]
+	if f.Options[f.SelectedOpt] != customPresetLabel {
+		t.Fatalf("expected Custom preselected, got %q", f.Options[f.SelectedOpt])
+	}
+	f.SelectedOpt = 3 // Every hour
+	screen.wizard.ActiveField = 1
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if got := svc.Cfg.Jobs[0].Schedule; got != "0 * * * *" {
+		t.Fatalf("expected hourly preset, got %q", got)
+	}
+}

@@ -46,6 +46,7 @@ type ScheduleScreen struct {
 	isWizardOpen bool
 	wizard       WizardModel
 	wizardJob    string
+	wizardCustom string // custom cron prefilled when the picker opened
 	width        int
 	height       int
 	onBack       func() tea.Cmd
@@ -147,28 +148,22 @@ func (s *ScheduleScreen) openWizard(jobName, current string) {
 		w.SetSize(s.width, s.height)
 	}
 	w.ValidateStep = func(_ int, vals map[string]string) error {
-		if vals["preset"] != customPresetLabel {
-			return nil
-		}
-		if len(strings.Fields(vals["cron"])) != 5 {
-			return errors.New("cron needs 5 fields: minute hour day month weekday (e.g. '30 2 * * *')")
+		if expr := s.chosenCron(vals); expr == "" {
+			return validateCron(vals["cron"])
 		}
 		return nil
 	}
 	s.wizard = w
 	s.wizardJob = jobName
+	s.wizardCustom = custom
 	s.isWizardOpen = true
 }
 
 func (s *ScheduleScreen) applySchedule(jobName string, vals map[string]string) {
-	expr := ""
-	for _, p := range schedulePresets {
-		if p.Label == vals["preset"] {
-			expr = p.Cron
-		}
-	}
+	expr := s.chosenCron(vals)
 	if expr == "" {
-		expr = strings.Join(strings.Fields(vals["cron"]), " ")
+		s.statusMsg = styleError.Render("✖ " + validateCron(vals["cron"]).Error())
+		return
 	}
 	if err := s.svc.InstallSchedule(jobName, expr); err != nil {
 		s.statusMsg = styleError.Render("✖ Could not install schedule: " + err.Error())
@@ -214,4 +209,41 @@ func (s ScheduleScreen) View() string {
 	}
 	b.WriteString(styleHelp.Render("Enter: Set schedule • x: Turn off • Esc: Back"))
 	return RenderBox(b.String(), s.width)
+}
+
+// chosenCron returns the cron expression picked in the schedule wizard, or ""
+// if the custom expression is invalid. A custom cron the user typed wins over
+// the Frequency selector, so typing one without switching to "Custom" works.
+func (s *ScheduleScreen) chosenCron(vals map[string]string) string {
+	custom := strings.Join(strings.Fields(vals["cron"]), " ")
+	useCustom := vals["preset"] == customPresetLabel ||
+		(custom != "" && custom != strings.Join(strings.Fields(s.wizardCustom), " "))
+	if !useCustom {
+		for _, p := range schedulePresets {
+			if p.Label == vals["preset"] {
+				return p.Cron
+			}
+		}
+	}
+	if validateCron(custom) != nil {
+		return ""
+	}
+	return custom
+}
+
+// validateCron checks a 5-field cron expression such as "*/30 2 * * 1-5".
+func validateCron(expr string) error {
+	fields := strings.Fields(expr)
+	if len(fields) != 5 {
+		if len(fields) == 1 && strings.Trim(fields[0], "*") == "" {
+			return errors.New("put spaces between the fields: every minute is '* * * * *'")
+		}
+		return errors.New("cron needs 5 fields separated by spaces: minute hour day month weekday (e.g. '30 2 * * *')")
+	}
+	for _, f := range fields {
+		if strings.Trim(f, "0123456789*/,-") != "" {
+			return fmt.Errorf("invalid cron field %q: use numbers, *, /, - or ,", f)
+		}
+	}
+	return nil
 }
