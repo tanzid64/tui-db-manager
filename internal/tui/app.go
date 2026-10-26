@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/tanzid64/tui-db-manager/internal/buildinfo"
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/store"
@@ -158,6 +159,13 @@ func (a *App) applyUpdateCmd(rel *update.Release) tea.Cmd {
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m, ok := msg.(tea.MouseMsg); ok {
+		translated := mouseToMsg(m)
+		if translated == nil {
+			return a, nil
+		}
+		msg = translated
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
@@ -198,6 +206,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.updateRelease = nil
 		}
 		return a, nil
+
+	case rowClickMsg:
+		// Buttons in the update dialog act on a single click.
+		if a.showUpdateModal {
+			if !a.isUpdating && a.updateStatus == "" && msg.index >= 0 && msg.index <= 1 {
+				a.modalSelected = msg.index
+				return a.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			}
+			return a, nil
+		}
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -273,7 +291,29 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, cmd
 }
 
+// layoutFor sets the box size limits for a terminal of the given height.
+// Outside the box the app draws the header and the vault footer.
+func layoutFor(height int) {
+	compactLayout = height > 0 && height < 30
+	if height <= 0 {
+		boxMaxLines = 0
+		return
+	}
+	chrome := 2 + 6 // header + footer, blank spacer lines (2 each side)
+	box := 2 + 2    // border + vertical padding
+	if compactLayout {
+		chrome = 2
+		box = 2
+	}
+	boxMaxLines = height - chrome - box
+	if boxMaxLines < 3 {
+		boxMaxLines = 3
+	}
+}
+
 func (a *App) View() string {
+	frameZones = frameZones[:0]
+	layoutFor(a.height)
 	var body string
 	if a.showUpdateModal {
 		body = a.renderUpdateModal()
@@ -314,8 +354,13 @@ func (a *App) View() string {
 		footer = styleError.Render(" [Vault: Unavailable] ")
 	}
 
-	view := lipgloss.JoinVertical(lipgloss.Left, header, "\n", body, "\n", footer)
-	return view
+	var view string
+	if compactLayout {
+		view = lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
+	} else {
+		view = lipgloss.JoinVertical(lipgloss.Left, header, "\n", body, "\n", footer)
+	}
+	return zone.Scan(view)
 }
 
 func (a *App) renderUpdateModal() string {
@@ -355,8 +400,8 @@ func (a *App) renderUpdateModal() string {
 			btnLater = styleSelected.Render("▶ [ Remind Me Later ]")
 		}
 
-		b.WriteString(fmt.Sprintf("%s    %s\n\n", btnUpdate, btnLater))
-		b.WriteString(styleHelp.Render("Tab / ← / →: Choose • Enter: Confirm • Esc: Dismiss"))
+		b.WriteString(fmt.Sprintf("%s    %s\n\n", markRow(0, btnUpdate), markRow(1, btnLater)))
+		b.WriteString(hintBar(keyHint("tab", "Tab / ← / →: Choose"), keyHint("enter", "Enter: Confirm"), keyHint("esc", "Esc: Dismiss")))
 	}
 
 	return RenderBox(b.String(), a.width)
@@ -386,7 +431,7 @@ func Run(configDir, passFile string) error {
 	}
 
 	app := NewApp(svc)
-	p := tea.NewProgram(app, tea.WithAltScreen())
+	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err = p.Run()
 	if exitMessage != "" {
 		fmt.Println(exitMessage)

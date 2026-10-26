@@ -33,6 +33,9 @@ func (s LogsScreen) Update(msg tea.Msg) (LogsScreen, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		s.SetSize(msg.Width, msg.Height)
 		return s, nil
+	case rowClickMsg:
+		clickRow(&s.selected, msg.index, len(records))
+		return s, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
@@ -88,14 +91,14 @@ func (s LogsScreen) View() string {
 			}
 
 			timeStr := rec.Started.Format("2006-01-02 15:04:05")
-			b.WriteString(fmt.Sprintf("%s%s  %s  %s  %s  %s\n",
+			b.WriteString(markRow(i, fmt.Sprintf("%s%s  %s  %s  %s  %s",
 				prefix,
 				itemStyle.Render(timeStr),
 				statusBadge,
 				styleFieldLabel.Render(rec.Action),
 				rec.Job,
 				styleHelp.Render(rec.Duration.Round(100).String()),
-			))
+			)) + "\n")
 
 			if rec.Error != "" {
 				b.WriteString(fmt.Sprintf("    %s\n", styleError.Render("Error: "+rec.Error)))
@@ -107,7 +110,10 @@ func (s LogsScreen) View() string {
 		}
 	}
 
-	b.WriteString(styleHelp.Render("↑/k, ↓/j: Scroll history • Esc: Back"))
+	b.WriteString(hintBar(
+		styleHelp.Render("↑/↓: Scroll history"),
+		keyHint("esc", "Esc: Back"),
+	))
 	return RenderBox(b.String(), s.width)
 }
 

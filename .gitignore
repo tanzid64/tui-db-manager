@@ -6,7 +6,6 @@
 # Secrets / local config
 secrets.enc
 *.key
-.env
 
 # Go
 *.test
@@ -15,3 +14,5 @@ vendor/
 
 # OS
 .DS_Store
+config.bat
+node_modules

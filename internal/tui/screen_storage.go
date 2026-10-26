@@ -75,6 +75,10 @@ func (s StorageScreen) Update(msg tea.Msg) (StorageScreen, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case rowClickMsg:
+		clickRow(&s.selected, msg.index, len(s.svc.Cfg.Storages))
+		return s, nil
+
 	case storageTestResultMsg:
 		if msg.err != nil {
 			s.statusMsg = styleError.Render(fmt.Sprintf("✖ Test %q failed: %v", msg.name, msg.err))
@@ -454,12 +458,12 @@ func (s StorageScreen) View() string {
 				loc = fmt.Sprintf("gdrive: %s", st.FolderID)
 			}
 
-			b.WriteString(fmt.Sprintf("%s%s  %s  %s\n",
+			b.WriteString(markRow(i, fmt.Sprintf("%s%s  %s  %s",
 				prefix,
 				itemStyle.Render(st.Name),
 				styleSubtitle.Render(fmt.Sprintf("[%s]", st.Type)),
 				loc,
-			))
+			)) + "\n")
 		}
 		b.WriteString("\n")
 	}
@@ -468,6 +472,12 @@ func (s StorageScreen) View() string {
 		b.WriteString(s.statusMsg + "\n\n")
 	}
 
-	b.WriteString(styleHelp.Render("t: Test • a: Add • e: Edit • d: Delete • Esc: Back"))
+	b.WriteString(hintBar(
+		keyHint("t", "t: Test"),
+		keyHint("a", "a: Add"),
+		keyHint("e", "e: Edit"),
+		keyHint("d", "d: Delete"),
+		keyHint("esc", "Esc: Back"),
+	))
 	return RenderBox(b.String(), s.width)
 }

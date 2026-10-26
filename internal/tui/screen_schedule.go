@@ -82,6 +82,14 @@ func (s ScheduleScreen) Update(msg tea.Msg) (ScheduleScreen, tea.Cmd) {
 		return s, cmd
 	}
 
+	if rc, ok := msg.(rowClickMsg); ok {
+		// Click selects a job; clicking it again opens its schedule.
+		if clickRow(&s.selected, rc.index, len(s.svc.Cfg.Jobs)) {
+			msg = tea.KeyMsg{Type: tea.KeyEnter}
+		} else {
+			return s, nil
+		}
+	}
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return s, nil
@@ -201,13 +209,17 @@ func (s ScheduleScreen) View() string {
 				state = styleWarning.Render("⚠ " + describeCron(j.Schedule) + " (not installed — press Enter to fix)")
 			}
 		}
-		b.WriteString(fmt.Sprintf("%s%s %s\n", prefix, itemStyle.Render(fmt.Sprintf("%-20s", j.Name)), state))
+		b.WriteString(markRow(i, fmt.Sprintf("%s%s %s", prefix, itemStyle.Render(fmt.Sprintf("%-20s", j.Name)), state)) + "\n")
 	}
 	b.WriteString("\n")
 	if s.statusMsg != "" {
 		b.WriteString(s.statusMsg + "\n\n")
 	}
-	b.WriteString(styleHelp.Render("Enter: Set schedule • x: Turn off • Esc: Back"))
+	b.WriteString(hintBar(
+		keyHint("enter", "Enter: Set schedule"),
+		keyHint("x", "x: Turn off"),
+		keyHint("esc", "Esc: Back"),
+	))
 	return RenderBox(b.String(), s.width)
 }
 

@@ -120,6 +120,36 @@ func (s RestoreScreen) Update(msg tea.Msg) (RestoreScreen, tea.Cmd) {
 		}
 		return s, nil
 
+	case rowClickMsg:
+		// Click selects; clicking the selected row again opens it (the
+		// restore itself still needs RESTORE typed on the next screen).
+		if s.loading {
+			return s, nil
+		}
+		activate := false
+		switch s.state {
+		case stateSelectJob:
+			activate = clickRow(&s.selectedJob, msg.index, len(s.svc.Cfg.Jobs))
+		case stateBrowseBackups:
+			activate = clickRow(&s.selectedObj, msg.index, len(s.backups))
+		}
+		if activate {
+			return s.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		}
+		return s, nil
+
+	case fieldClickMsg:
+		if s.state == stateConfirmRestore {
+			if msg.index == 0 {
+				s.confirmInput.Blur()
+				s.toDBInput.Focus()
+			} else {
+				s.toDBInput.Blur()
+				s.confirmInput.Focus()
+			}
+		}
+		return s, nil
+
 	case tea.KeyMsg:
 		if s.loading && msg.String() != "esc" {
 			return s, nil
@@ -263,7 +293,7 @@ func (s RestoreScreen) View() string {
 					prefix = styleSelected.Render("▶ ")
 					itemStyle = styleSelected
 				}
-				b.WriteString(fmt.Sprintf("%s%s  %s\n", prefix, itemStyle.Render(j.Name), styleSubtitle.Render(fmt.Sprintf("(%s, storage: %s)", j.Engine, j.Storage))))
+				b.WriteString(markRow(i, fmt.Sprintf("%s%s  %s", prefix, itemStyle.Render(j.Name), styleSubtitle.Render(fmt.Sprintf("(%s, storage: %s)", j.Engine, j.Storage)))) + "\n")
 			}
 			b.WriteString("\n")
 		}
@@ -299,14 +329,14 @@ func (s RestoreScreen) View() string {
 				if i == 0 {
 					latest = styleSuccess.Render(" (latest)")
 				}
-				b.WriteString(fmt.Sprintf("%s%s  %s  %s  %s%s\n",
+				b.WriteString(markRow(i, fmt.Sprintf("%s%s  %s  %s  %s%s",
 					prefix,
 					itemStyle.Render(modStr),
 					styleSubtitle.Render(fmt.Sprintf("%-9s", humanSize(obj.Size))),
 					styleFieldLabel.Render("["+obj.Storage+"]"),
 					styleHelp.Render(obj.Key),
 					latest,
-				))
+				)) + "\n")
 			}
 			b.WriteString("\n")
 		}
@@ -327,14 +357,16 @@ func (s RestoreScreen) View() string {
 		b.WriteString(styleWarning.Render("⚠ This replaces the current data in that database."))
 		b.WriteString("\n\n")
 
-		b.WriteString(styleFieldLabel.Render("Restore into a different database instead (optional, Tab to edit):"))
-		b.WriteString("\n")
-		b.WriteString(s.toDBInput.View())
+		toDB, confirm := s.toDBInput.View(), s.confirmInput.View()
+		if s.toDBInput.Focused() {
+			toDB += focusMark
+		} else {
+			confirm += focusMark
+		}
+		b.WriteString(markZone("field:0", styleFieldLabel.Render("Restore into a different database instead (optional, Tab to edit):")+"\n"+toDB))
 		b.WriteString("\n\n")
 
-		b.WriteString(styleFieldLabel.Render("Confirmation (type RESTORE):"))
-		b.WriteString("\n")
-		b.WriteString(s.confirmInput.View())
+		b.WriteString(markZone("field:1", styleFieldLabel.Render("Confirmation (type RESTORE):")+"\n"+confirm))
 		b.WriteString("\n\n")
 	}
 
@@ -343,9 +375,17 @@ func (s RestoreScreen) View() string {
 	}
 
 	if s.state == stateConfirmRestore {
-		b.WriteString(styleHelp.Render("Type RESTORE then Enter • Tab: Switch field • Esc: Cancel"))
+		b.WriteString(hintBar(
+			keyHint("enter", "Type RESTORE then Enter"),
+			keyHint("tab", "Tab: Switch field"),
+			keyHint("esc", "Esc: Cancel"),
+		))
 	} else {
-		b.WriteString(styleHelp.Render("↑/k, ↓/j: Navigate • Enter: Select • Esc: Back"))
+		b.WriteString(hintBar(
+			styleHelp.Render("↑/↓: Navigate"),
+			keyHint("enter", "Enter: Select"),
+			keyHint("esc", "Esc: Back"),
+		))
 	}
 
 	return RenderBox(b.String(), s.width)
