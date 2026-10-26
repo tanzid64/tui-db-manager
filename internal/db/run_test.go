@@ -3,6 +3,8 @@ package db
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -44,5 +46,21 @@ func TestLookToolMissing(t *testing.T) {
 	_, err := lookTool("definitely-not-a-real-tool-xyz")
 	if err == nil || !strings.Contains(err.Error(), "definitely-not-a-real-tool-xyz") {
 		t.Fatalf("expected missing-tool error naming the tool, got %v", err)
+	}
+}
+
+func TestLookToolSearchesExtraDirs(t *testing.T) {
+	dir := t.TempDir()
+	tool := filepath.Join(dir, "dbk-fake-dump")
+	if err := os.WriteFile(tool, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	orig := extraToolDirs
+	extraToolDirs = func() []string { return []string{filepath.Join(dir, "missing"), dir} }
+	defer func() { extraToolDirs = orig }()
+
+	got, err := lookTool("dbk-not-on-path", "dbk-fake-dump")
+	if err != nil || got != tool {
+		t.Fatalf("lookTool = %q, %v; want %q", got, err, tool)
 	}
 }

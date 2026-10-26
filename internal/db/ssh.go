@@ -297,6 +297,12 @@ func withTunnel(ctx context.Context, e Engine, c Conn, fn func(Conn) error) erro
 // tunneled wraps an engine so every call goes through Conn.SSH when set.
 type tunneled struct{ Engine }
 
+// CheckTools reports the client tools this engine needs for actions that
+// aren't installed. See ToolChecker.
+func (t tunneled) CheckTools(actions ...Action) error {
+	return CheckTools(t.Engine.Name(), actions...)
+}
+
 func (t tunneled) Test(ctx context.Context, c Conn) error {
 	return withTunnel(ctx, t.Engine, c, func(c Conn) error { return t.Engine.Test(ctx, c) })
 }

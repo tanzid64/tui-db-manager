@@ -111,6 +111,11 @@ func runBackup(ctx context.Context, d Deps, job config.Job) (storage.Object, err
 	if !ok {
 		return storage.Object{}, fmt.Errorf("unknown engine %q", job.Engine)
 	}
+	if tc, ok := eng.(db.ToolChecker); ok {
+		if err := tc.CheckTools(db.ActionBackup); err != nil {
+			return storage.Object{}, err
+		}
+	}
 	sc, ok := d.Cfg.Storage(job.Storage)
 	if !ok {
 		return storage.Object{}, fmt.Errorf("storage %q not found", job.Storage)

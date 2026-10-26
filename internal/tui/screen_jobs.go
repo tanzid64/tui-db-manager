@@ -281,7 +281,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 
 	stepIdentity := WizardStep{
 		Title:       "Job Identity",
-		Description: "Job identification and database engine selection",
+		Description: "Job identification and database engine selection. " + s.toolSummary(engineOptions),
 		Fields: []WizardField{
 			{Key: "name", Label: "Job Name", Placeholder: "production-backup", Value: jobNameVal, Type: FieldText},
 			{Key: "engine", Label: "Database Engine", Type: FieldSelect, Options: engineOptions, SelectedOpt: engineSelectedIdx},
@@ -293,6 +293,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 		sqliteStep := WizardStep{
 			Title:       "SQLite Configuration",
 			Description: "Path to SQLite database file (no network host/credentials needed)",
+			Warning:     s.toolWarning("sqlite"),
 			Fields: []WizardField{
 				{Key: "path", Label: "SQLite DB Path", Placeholder: "/path/to/db.sqlite", Value: sqlitePathVal, Type: FieldText},
 			},
@@ -302,6 +303,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 		connStep := WizardStep{
 			Title:       "Server Connection",
 			Description: connStepDescription,
+			Warning:     s.toolWarning(engineOptions[engineSelectedIdx]),
 			Fields: []WizardField{
 				{Key: "host", Label: "Host", Placeholder: "127.0.0.1", Value: hostVal, Type: FieldText},
 				{Key: "port", Label: "Port", Placeholder: portVal, Value: portVal, Type: FieldText},
@@ -347,6 +349,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 				sqliteStep := WizardStep{
 					Title:       "SQLite Configuration",
 					Description: "Path to SQLite database file (no network host/credentials needed)",
+					Warning:     s.toolWarning("sqlite"),
 					Fields: []WizardField{
 						{Key: "path", Label: "SQLite DB Path", Placeholder: "/path/to/db.sqlite", Value: vals["path"], Type: FieldText},
 					},
@@ -380,6 +383,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 				connStep := WizardStep{
 					Title:       "Server Connection",
 					Description: connStepDescription,
+					Warning:     s.toolWarning(engine),
 					Fields:      connFields,
 				}
 				stepDb := WizardStep{
@@ -671,6 +675,9 @@ func (s JobsScreen) View() string {
 			featStr := ""
 			if len(features) > 0 {
 				featStr = fmt.Sprintf("[%s]", strings.Join(features, "+"))
+			}
+			if s.svc.ToolsMissing(j.Engine) != nil {
+				featStr += " " + styleWarning.Render("⚠ tools missing (press t for details)")
 			}
 			if st, ok := s.svc.Cfg.Storage(j.Storage); ok && !j.Encrypt && st.Type != "local" {
 				featStr += " " + styleWarning.Render("⚠ not encrypted")

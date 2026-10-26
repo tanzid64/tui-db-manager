@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/tanzid64/tui-db-manager/internal/db"
 	"github.com/tanzid64/tui-db-manager/internal/history"
 	"github.com/tanzid64/tui-db-manager/internal/restore"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
@@ -35,6 +36,12 @@ func newRestoreCmd() *cobra.Command {
 			}
 			if !yes {
 				return fmt.Errorf("restore not confirmed: re-run with --yes (this overwrites the target database)")
+			}
+			// Check the restore tool before searching storages for backups.
+			if job, ok := app.cfg.Job(args[0]); ok {
+				if err := db.CheckTools(job.Engine, db.ActionRestore); err != nil {
+					return err
+				}
 			}
 			storageName, _ := cmd.Flags().GetString("storage")
 			// Look in every storage so backups made before the job moved to a

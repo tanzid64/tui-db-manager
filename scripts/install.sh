@@ -51,12 +51,19 @@ if [ "${1:-}" = "--uninstall" ] || [ "${1:-}" = "-u" ]; then
     fi
   done
 
-  # 3. Clean configuration & database directory
-  CONFIG_DIR="${DBK_CONFIG_DIR:-$HOME/.config/dbk}"
-  if [ -d "$CONFIG_DIR" ]; then
-    log_info "Removing configuration and database directory: $CONFIG_DIR"
-    rm -rf "$CONFIG_DIR"
+  # 3. Clean configuration & database directory (macOS keeps it under
+  # ~/Library/Application Support, Linux under ~/.config)
+  if [ -n "${DBK_CONFIG_DIR:-}" ]; then
+    set -- "$DBK_CONFIG_DIR"
+  else
+    set -- "$HOME/.config/dbk" "$HOME/Library/Application Support/dbk"
   fi
+  for CONFIG_DIR in "$@"; do
+    if [ -d "$CONFIG_DIR" ]; then
+      log_info "Removing configuration and database directory: $CONFIG_DIR"
+      rm -rf "$CONFIG_DIR"
+    fi
+  done
 
   # 4. Clean any residual systemd user units
   if [ -d "$HOME/.config/systemd/user" ]; then

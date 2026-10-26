@@ -33,6 +33,12 @@ type Engine interface {
 	Restore(ctx context.Context, c Conn, r io.Reader) error
 }
 
+// ToolChecker is implemented by engines from Get: it reports missing client
+// tools up front, before any work starts.
+type ToolChecker interface {
+	CheckTools(actions ...Action) error
+}
+
 // DatabaseLister is an optional interface implemented by engines that can list available databases on a server.
 type DatabaseLister interface {
 	ListDatabases(ctx context.Context, c Conn) ([]string, error)

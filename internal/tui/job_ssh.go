@@ -199,3 +199,24 @@ func (s *JobsScreen) saveJobSSH(job *config.Job, oldName string, vals map[string
 	}
 	return strings.Join(notes, "; ")
 }
+
+// toolWarning explains which client tools engine is missing here, or "".
+func (s *JobsScreen) toolWarning(engine string) string {
+	if err := s.svc.ToolsMissing(engine); err != nil {
+		return err.Error() + ". You can still save the job; backups fail until they are installed."
+	}
+	return ""
+}
+
+// toolSummary shows which engines' client tools are installed here.
+func (s *JobsScreen) toolSummary(engines []string) string {
+	parts := make([]string, 0, len(engines))
+	for _, e := range engines {
+		mark := "✔"
+		if s.svc.ToolsMissing(e) != nil {
+			mark = "✖ tools missing"
+		}
+		parts = append(parts, e+" "+mark)
+	}
+	return "Client tools on this computer: " + strings.Join(parts, " · ")
+}

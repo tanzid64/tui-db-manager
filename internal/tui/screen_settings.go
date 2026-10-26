@@ -69,7 +69,9 @@ func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
 		s.wizard, cmd = s.wizard.Update(msg)
 		if s.wizard.Done {
 			s.isWizardOpen = false
-			s.handleSettingsWizardFinish(s.activeOpt, s.wizard.Values)
+			if done := s.handleSettingsWizardFinish(s.activeOpt, s.wizard.Values); done != nil {
+				cmd = tea.Batch(cmd, done)
+			}
 		} else if s.wizard.Canceled {
 			s.isWizardOpen = false
 		}
@@ -165,6 +167,7 @@ func (s *SettingsScreen) openUninstallWizard() {
 			Fields: []WizardField{
 				{Key: "remove_schedules", Label: "Remove all automated backup schedules", Type: FieldCheckbox, Checked: true},
 				{Key: "purge_data", Label: "Permanently delete database, config, and secrets", Type: FieldCheckbox, Checked: true},
+				{Key: "remove_binary", Label: "Remove the dbk program", Type: FieldCheckbox, Checked: true},
 			},
 		},
 	}
@@ -172,13 +175,15 @@ func (s *SettingsScreen) openUninstallWizard() {
 	s.isWizardOpen = true
 }
 
-func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map[string]string) {
+// handleSettingsWizardFinish applies a finished wizard. It returns tea.Quit
+// after an uninstall that removed the data or the program.
+func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map[string]string) tea.Cmd {
 	switch opt {
 	case optExportConfig:
 		dest := strings.TrimSpace(vals["dest"])
 		if dest == "" {
 			s.statusMsg = styleError.Render("Destination path cannot be empty")
-			return
+			return nil
 		}
 		dest = config.ExpandPath(dest)
 		if abs, err := filepath.Abs(dest); err == nil {
@@ -188,7 +193,7 @@ func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map
 		pass := vals["transfer_pass"]
 		if includeSec && pass == "" {
 			s.statusMsg = styleError.Render("✖ Enter a passphrase to protect the passwords and keys (you'll need it to import)")
-			return
+			return nil
 		}
 		if err := s.svc.ExportBundle(dest, pass, includeSec); err != nil {
 			s.statusMsg = styleError.Render("✖ Export failed: " + err.Error())
@@ -202,7 +207,7 @@ func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map
 		src := strings.TrimSpace(vals["src"])
 		if src == "" {
 			s.statusMsg = styleError.Render("Source path cannot be empty")
-			return
+			return nil
 		}
 		pass := vals["transfer_pass"]
 		ow := vals["overwrite"] == "true"
@@ -223,16 +228,51 @@ func (s *SettingsScreen) handleSettingsWizardFinish(opt SettingsOption, vals map
 	case optCleanUninstall:
 		removeSched := vals["remove_schedules"] == "true"
 		purge := vals["purge_data"] == "true"
-		if !removeSched && !purge {
+		removeBin := vals["remove_binary"] == "true"
+		if !removeSched && !purge && !removeBin {
 			s.statusMsg = styleHelp.Render("Uninstall cancelled: no actions selected")
-			return
+			return nil
 		}
-		if err := s.svc.Uninstall(context.Background(), removeSched, purge); err != nil {
-			s.statusMsg = styleError.Render("✖ Uninstall failed: " + err.Error())
-		} else {
-			s.statusMsg = styleSuccess.Render("✔ Clean uninstall complete. All selected schedules and data have been purged.")
+		res, err := s.svc.Uninstall(context.Background(), removeSched, purge, removeBin)
+		summary := uninstallSummary(res, err)
+		if res.DataDir == "" && res.Binary == "" {
+			// Nothing irreversible happened; stay in the app and show the result.
+			if err != nil {
+				s.statusMsg = styleError.Render("✖ " + strings.ReplaceAll(summary, "\n", " • "))
+			} else {
+				s.statusMsg = styleSuccess.Render("✔ " + strings.ReplaceAll(summary, "\n", " • "))
+			}
+			return nil
 		}
+		// The data or program is gone: quit, and print the summary in the
+		// terminal so it isn't lost with the screen.
+		exitMessage = summary
+		return tea.Quit
 	}
+	return nil
+}
+
+// uninstallSummary describes what an uninstall did, one item per line.
+func uninstallSummary(res UninstallResult, err error) string {
+	var lines []string
+	if n := len(res.SchedulesRemoved); n > 0 {
+		lines = append(lines, fmt.Sprintf("Removed %d schedule(s)", n))
+	}
+	if res.DataDir != "" {
+		lines = append(lines, "Deleted "+res.DataDir)
+	}
+	if res.Binary != "" {
+		lines = append(lines, "Deleted "+res.Binary)
+	}
+	if err != nil {
+		lines = append(lines, "Uninstall incomplete:")
+		for _, e := range strings.Split(err.Error(), "\n") {
+			lines = append(lines, "  ✖ "+e)
+		}
+	} else {
+		lines = append(lines, "dbk uninstall complete.")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (s SettingsScreen) View() string {

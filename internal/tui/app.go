@@ -61,6 +61,9 @@ type App struct {
 	updateStatus    string
 }
 
+// exitMessage is printed after the TUI closes, e.g. the uninstall summary.
+var exitMessage string
+
 func NewApp(svc *Service) *App {
 	app := &App{
 		svc:           svc,
@@ -385,5 +388,8 @@ func Run(configDir, passFile string) error {
 	app := NewApp(svc)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	_, err = p.Run()
+	if exitMessage != "" {
+		fmt.Println(exitMessage)
+	}
 	return err
 }

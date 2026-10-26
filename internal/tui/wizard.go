@@ -32,6 +32,7 @@ type WizardField struct {
 type WizardStep struct {
 	Title       string
 	Description string
+	Warning     string // shown under the description in the warning style
 	Fields      []WizardField
 }
 
@@ -323,6 +324,10 @@ func (w WizardModel) View() string {
 	b.WriteString("\n")
 	if step.Description != "" {
 		b.WriteString(styleSubtitle.Render(step.Description))
+		b.WriteString("\n")
+	}
+	if step.Warning != "" {
+		b.WriteString(styleWarning.Render("⚠ " + step.Warning))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")

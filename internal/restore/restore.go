@@ -56,6 +56,12 @@ func Run(ctx context.Context, d Deps, jobName, atKey, toDatabase string, confirm
 	if !ok {
 		return fmt.Errorf("unknown engine %q", job.Engine)
 	}
+	// Fail before downloading the backup if the restore tool is missing.
+	if tc, ok := eng.(db.ToolChecker); ok {
+		if err := tc.CheckTools(db.ActionRestore); err != nil {
+			return err
+		}
+	}
 	be := d.Backend()
 	if atKey == "" {
 		objs, err := be.List(ctx, job.Name+"/")

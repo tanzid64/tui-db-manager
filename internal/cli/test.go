@@ -50,10 +50,15 @@ func newTestCmd() *cobra.Command {
 				if err := eng.Test(cmd.Context(), conn); err != nil {
 					return err
 				}
+
 				if conn.SSH != nil {
 					cmd.Printf("job %q connection OK (via ssh %s)\n", target, conn.SSH.Host)
 				} else {
 					cmd.Printf("job %q connection OK\n", target)
+				}
+				// The connection works, but backups also need their own tools.
+				if err := db.CheckTools(job.Engine, db.ActionBackup, db.ActionRestore); err != nil {
+					return fmt.Errorf("connection OK, but backups will fail: %w", err)
 				}
 				return nil
 			}

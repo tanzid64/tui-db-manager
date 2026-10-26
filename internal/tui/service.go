@@ -2,14 +2,18 @@ package tui
 
 import (
 	"context"
-
 	"encoding/json"
-	"filippo.io/age"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
 	"time"
+
+	"filippo.io/age"
 
 	"github.com/tanzid64/tui-db-manager/internal/backup"
 	"github.com/tanzid64/tui-db-manager/internal/bundle"
@@ -652,11 +656,46 @@ func (s *Service) TestJob(ctx context.Context, jobName string) error {
 	if err != nil {
 		return err
 	}
-	return eng.Test(ctx, db.Conn{
+	if err := eng.Test(ctx, db.Conn{
 		Host: job.Conn.Host, Port: job.Conn.Port, User: job.Conn.User,
 		Password: pw, Database: job.Conn.Database, Path: job.Conn.Path, TLS: job.Conn.TLS,
 		SSH: tunnel,
-	})
+	}); err != nil {
+		return err
+	}
+	// The connection works, but backups also need their own tools.
+	if tc, ok := eng.(db.ToolChecker); ok {
+		if err := tc.CheckTools(db.ActionBackup, db.ActionRestore); err != nil {
+			return fmt.Errorf("connection OK, but backups will fail: %w", err)
+		}
+	}
+	return nil
+}
+
+// ToolsMissing returns the missing-tools error for engine, or nil. Results
+// are cached briefly because screens call it on every render.
+func (s *Service) ToolsMissing(engine string) error {
+	toolCache.mu.Lock()
+	defer toolCache.mu.Unlock()
+	if c, ok := toolCache.m[engine]; ok && time.Since(c.at) < 10*time.Second {
+		return c.err
+	}
+	err := db.CheckTools(engine, db.AllActions...)
+	if toolCache.m == nil {
+		toolCache.m = map[string]toolCheck{}
+	}
+	toolCache.m[engine] = toolCheck{err: err, at: time.Now()}
+	return err
+}
+
+type toolCheck struct {
+	err error
+	at  time.Time
+}
+
+var toolCache struct {
+	mu sync.Mutex
+	m  map[string]toolCheck
 }
 
 // EnsureEncryptionKey makes sure an encrypted job has an age key pair: the
@@ -711,25 +750,91 @@ func (s *Service) ImportBundle(srcPath, transferPass string, overwrite bool) (*b
 	return res, nil
 }
 
-func (s *Service) Uninstall(ctx context.Context, removeSchedules, purgeData bool) error {
+// UninstallResult says what Uninstall removed, for the message shown after
+// dbk exits.
+type UninstallResult struct {
+	SchedulesRemoved []string
+	DataDir          string // set when the data directory was deleted
+	Binary           string // set when the dbk program was deleted
+}
+
+// Uninstall removes schedules, the data directory, and the dbk program as
+// asked. It keeps going after a failure and returns every error joined, so a
+// partial uninstall is reported instead of claimed as complete.
+func (s *Service) Uninstall(ctx context.Context, removeSchedules, purgeData, removeBinary bool) (UninstallResult, error) {
+	var res UninstallResult
+	var errs []error
+	schedulesDir := filepath.Join(s.ConfigDir, "schedules")
+
 	if removeSchedules {
+		var jobs []string
 		if s.Cfg != nil {
 			for _, j := range s.Cfg.Jobs {
-				_ = removeAllSchedules(ctx, j.Name)
+				jobs = append(jobs, j.Name)
 			}
 		}
-		_ = os.RemoveAll(filepath.Join(s.ConfigDir, "schedules"))
+		// Wrapper scripts left by jobs that were since deleted or renamed.
+		if entries, err := os.ReadDir(schedulesDir); err == nil {
+			for _, e := range entries {
+				name := e.Name()
+				if strings.HasPrefix(name, "dbk-") && strings.HasSuffix(name, ".sh") {
+					job := strings.TrimSuffix(strings.TrimPrefix(name, "dbk-"), ".sh")
+					if !slices.Contains(jobs, job) {
+						jobs = append(jobs, job)
+					}
+				}
+			}
+		}
+		failed := false
+		for _, job := range jobs {
+			if err := removeAllSchedules(ctx, job); err != nil {
+				errs = append(errs, fmt.Errorf("remove schedule for %q: %w", job, err))
+				failed = true
+				continue
+			}
+			res.SchedulesRemoved = append(res.SchedulesRemoved, job)
+		}
+		// Keep the wrapper scripts if a schedule is still installed, so a
+		// retry can find it.
+		if !failed {
+			if err := os.RemoveAll(schedulesDir); err != nil {
+				errs = append(errs, fmt.Errorf("remove schedule scripts: %w", err))
+			}
+		}
 	}
+
 	if purgeData {
 		if s.Store != nil {
 			_ = s.Store.Close()
 		}
-		_ = os.RemoveAll(s.ConfigDir)
+		if err := os.RemoveAll(s.ConfigDir); err != nil {
+			errs = append(errs, fmt.Errorf("delete %s: %w", s.ConfigDir, err))
+		} else {
+			res.DataDir = s.ConfigDir
+		}
 		s.Cfg = &config.Config{Version: config.CurrentVersion}
 		s.Vault = nil
 		s.Store = nil
 	}
-	return nil
+
+	if removeBinary {
+		exe, err := os.Executable()
+		if err == nil {
+			exe, err = filepath.EvalSymlinks(exe)
+		}
+		if err == nil {
+			err = os.Remove(exe)
+			if err != nil {
+				err = fmt.Errorf("delete %s: %w (run: sudo rm %q)", exe, err, exe)
+			} else {
+				res.Binary = exe
+			}
+		}
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return res, errors.Join(errs...)
 }
 
 // SecurityNotice returns a warning when the vault is still protected by the

@@ -8,7 +8,12 @@ import (
 
 var registry = map[string]Engine{}
 
-func Register(e Engine) { registry[e.Name()] = e }
+func Register(e Engine) {
+	if t, ok := e.(tunneled); ok { // re-registering an engine from Get
+		e = t.Engine
+	}
+	registry[e.Name()] = e
+}
 
 // Get returns the named engine, wrapped so that connections with SSH settings
 // are routed through an SSH tunnel.

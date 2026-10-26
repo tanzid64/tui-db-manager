@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,7 +20,8 @@ func newUninstallCmd() *cobra.Command {
 		Short: "Cleanly remove dbk schedules, configuration, database, and optionally the binary",
 		Long: `Uninstall dbk cleanly from the system.
 By default, this command removes all automated job schedules (crontab, systemd, or Task Scheduler)
-and purges the configuration directory and SQLite database (~/.config/dbk).
+and purges the configuration directory and SQLite database
+(~/.config/dbk on Linux, ~/Library/Application Support/dbk on macOS).
 With --remove-binary, it also removes the dbk executable.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			yes, _ := cmd.Flags().GetBool("yes")
@@ -107,14 +109,20 @@ With --remove-binary, it also removes the dbk executable.`,
 				}
 			}
 
+			var schedErrs []error
 			for _, job := range jobNames {
-				if err := sched.Remove(cmd.Context(), job); err == nil {
-					cmd.Printf("  ✔ Removed schedule for %q\n", job)
+				if err := sched.Remove(cmd.Context(), job); err != nil {
+					cmd.Printf("  ✖ Could not remove schedule for %q: %v\n", job, err)
+					schedErrs = append(schedErrs, fmt.Errorf("schedule %q: %w", job, err))
+					continue
 				}
+				cmd.Printf("  ✔ Removed schedule for %q\n", job)
 			}
 
-			// Clean up schedules directory if present
-			_ = os.RemoveAll(schedulesDir)
+			// Keep the wrapper scripts if a schedule is still installed.
+			if len(schedErrs) == 0 {
+				_ = os.RemoveAll(schedulesDir)
+			}
 
 			if purgeData {
 				cmd.Printf("==> Purging configuration, database, and secrets from %s...\n", dir)
@@ -137,13 +145,16 @@ With --remove-binary, it also removes the dbk executable.`,
 				}
 			}
 
+			if len(schedErrs) > 0 {
+				return fmt.Errorf("uninstall incomplete, some schedules are still installed: %w", errors.Join(schedErrs...))
+			}
 			cmd.Println("\n✔ Clean uninstall completed successfully.")
 			return nil
 		},
 	}
 
 	cmd.Flags().BoolP("yes", "y", false, "confirm uninstall without interactive prompt")
-	cmd.Flags().Bool("purge-data", true, "purge database, configuration, and secrets directory (~/.config/dbk)")
+	cmd.Flags().Bool("purge-data", true, "purge database, configuration, and secrets directory (~/.config/dbk; macOS: ~/Library/Application Support/dbk)")
 	cmd.Flags().Bool("remove-binary", false, "remove the dbk executable from the system")
 	cmd.Flags().Bool("all", false, "remove schedules, purge all data, and remove the dbk executable")
 

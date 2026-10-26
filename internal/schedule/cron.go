@@ -42,7 +42,12 @@ func (c *CronScheduler) readCrontab(ctx context.Context) ([]string, error) {
 	if err != nil {
 		outStr := string(out)
 		// Standard output when user has no crontab yet
-		if strings.Contains(outStr, "no crontab") || strings.Contains(strings.ToLower(err.Error()), "exit status 1") {
+		// Only crontab's own "no crontab for <user>" means empty; any other
+		// failure (e.g. macOS denying access) must not look like "nothing
+		// scheduled", or removal would silently do nothing.
+		lower := strings.ToLower(outStr)
+		if strings.Contains(lower, "no crontab") || // cronie, macOS, BSD
+			(strings.Contains(lower, "can't open") && strings.Contains(lower, "no such file")) { // busybox
 			return nil, nil
 		}
 		return nil, fmt.Errorf("read crontab: %w (%s)", err, strings.TrimSpace(outStr))

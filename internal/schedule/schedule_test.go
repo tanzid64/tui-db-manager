@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -376,5 +377,25 @@ func TestSchtasksScheduler(t *testing.T) {
 	}
 	if lastArgs[0] != "/delete" || lastArgs[2] != "dbk_sales" {
 		t.Fatalf("unexpected delete args: %+v", lastArgs)
+	}
+}
+
+func TestCronReadDistinguishesEmptyFromFailure(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		out     string
+		wantErr bool
+	}{
+		{"crontab: no crontab for alice", false},
+		{"crontab: can't open 'alice': No such file or directory", false},
+		{"crontab: tmp/tmp.123: Operation not permitted", true},
+	} {
+		c := NewCronScheduler(func(context.Context, []byte, string, ...string) ([]byte, error) {
+			return []byte(tc.out), errors.New("exit status 1")
+		})
+		_, err := c.readCrontab(ctx)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("%q: err = %v, wantErr %v", tc.out, err, tc.wantErr)
+		}
 	}
 }

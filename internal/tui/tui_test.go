@@ -1089,3 +1089,83 @@ func TestSaveJobSSHImportsKeyIntoVault(t *testing.T) {
 		t.Fatalf("unexpected note %q", note)
 	}
 }
+
+func TestUninstallReportsFailuresAndKeepsScripts(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	svc.Cfg.Jobs = []config.Job{{Name: "live"}}
+	scripts := filepath.Join(dir, "schedules")
+	os.MkdirAll(scripts, 0o700)
+	os.WriteFile(filepath.Join(scripts, "dbk-orphan.sh"), []byte("#!/bin/sh\n"), 0o700)
+
+	orig := removeAllSchedules
+	defer func() { removeAllSchedules = orig }()
+	var tried []string
+	removeAllSchedules = func(_ context.Context, job string) error {
+		tried = append(tried, job)
+		if job == "orphan" {
+			return errors.New("crontab: Operation not permitted")
+		}
+		return nil
+	}
+
+	res, err := svc.Uninstall(context.Background(), true, false, false)
+	if err == nil || !strings.Contains(err.Error(), "Operation not permitted") {
+		t.Fatalf("expected the schedule error, got %v", err)
+	}
+	if strings.Join(tried, ",") != "live,orphan" {
+		t.Fatalf("expected config and orphan jobs, tried %v", tried)
+	}
+	if len(res.SchedulesRemoved) != 1 {
+		t.Fatalf("expected 1 removed, got %v", res.SchedulesRemoved)
+	}
+	if _, err := os.Stat(scripts); err != nil {
+		t.Fatalf("schedule scripts should be kept for a retry: %v", err)
+	}
+	if !strings.Contains(uninstallSummary(res, err), "Uninstall incomplete") {
+		t.Fatal("summary should say the uninstall is incomplete")
+	}
+
+	// Purge succeeds and the data directory is gone.
+	removeAllSchedules = func(context.Context, string) error { return nil }
+	res, err = svc.Uninstall(context.Background(), true, true, false)
+	if err != nil || res.DataDir != dir {
+		t.Fatalf("purge: %+v, %v", res, err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("data dir still exists: %v", err)
+	}
+}
+
+func TestJobsScreenWarnsAboutMissingTools(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // no database tools at all
+	toolCache.mu.Lock()
+	toolCache.m = nil
+	toolCache.mu.Unlock()
+	t.Cleanup(func() {
+		toolCache.mu.Lock()
+		toolCache.m = nil
+		toolCache.mu.Unlock()
+	})
+
+	svc, err := NewService(t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	svc.Cfg.Jobs = []config.Job{{Name: "shop", Engine: "postgres", Storage: "local"}}
+	screen := NewJobsScreen(svc, nil, nil)
+	if !strings.Contains(screen.View(), "tools missing") {
+		t.Fatal("job list should flag the missing tools")
+	}
+
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if !strings.Contains(screen.wizard.Steps[0].Description, "postgres ✖") {
+		t.Fatalf("engine step should list tool status, got %q", screen.wizard.Steps[0].Description)
+	}
+	if !strings.Contains(screen.wizard.Steps[1].Warning, "mysqldump") {
+		t.Fatalf("connection step should warn about mysqldump, got %q", screen.wizard.Steps[1].Warning)
+	}
+}
