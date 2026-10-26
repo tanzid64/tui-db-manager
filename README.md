@@ -73,7 +73,7 @@ Simply run `dbk` in any terminal:
 dbk
 ```
 
-When opened, `dbk` launches into the interactive dashboard. If your vault is locked, it will prompt for your Master Key (or read `DBK_MASTER_KEY` from your environment). From the main menu, you can:
+When opened, `dbk` launches into the interactive dashboard. It works with the keyboard or the mouse (click a row to select it, click the key hints at the bottom, scroll with the wheel; hold Shift to select text), and fits small terminals by scrolling around the selected item. If your vault is locked, it will prompt for your Master Key (or read `DBK_MASTER_KEY` from your environment). From the main menu, you can:
 - **Backup Jobs:** Add a database, test its connection (`t`), and back it up now (`Enter`).
 - **Schedules:** Pick a frequency (daily, every 6/12 hours, hourly, weekly, or custom cron) for each job.
 - **Restore:** Pick a backup (newest first) and restore it after typing `RESTORE` to confirm.

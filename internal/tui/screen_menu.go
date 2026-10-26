@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -48,6 +47,14 @@ func (m MenuScreen) Update(msg tea.Msg) (MenuScreen, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.SetSize(msg.Width, msg.Height)
 		return m, nil
+	case rowClickMsg:
+		// A menu item opens on a single click.
+		if msg.index >= 0 && msg.index < len(m.items) {
+			m.selected = msg.index
+			if m.onSelect != nil {
+				return m, m.onSelect(m.selected)
+			}
+		}
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
@@ -84,6 +91,9 @@ func (m MenuScreen) View() string {
 		b.WriteString("\n\n")
 	}
 
+	// Each item takes three lines with its description; on a short terminal
+	// show one line per item so the whole menu fits.
+	short := m.height > 0 && m.height < 36
 	for i, it := range m.items {
 		prefix := "  "
 		itemStyle := styleNormal
@@ -91,10 +101,22 @@ func (m MenuScreen) View() string {
 			prefix = styleSelected.Render("▶ ")
 			itemStyle = styleSelected
 		}
-		b.WriteString(fmt.Sprintf("%s%s\n", prefix, itemStyle.Render(it.Title)))
-		b.WriteString(fmt.Sprintf("    %s\n\n", styleHelp.Render(it.Desc)))
+		row := prefix + itemStyle.Render(it.Title)
+		if short {
+			b.WriteString(markRow(i, row) + "\n")
+			continue
+		}
+		b.WriteString(markRow(i, row+"\n    "+styleHelp.Render(it.Desc)) + "\n\n")
+	}
+	if short {
+		b.WriteString("\n")
 	}
 
-	b.WriteString(styleHelp.Render("↑/k, ↓/j: Navigate • Enter: Select • u: Updates • q: Quit"))
+	b.WriteString(hintBar(
+		styleHelp.Render("↑/↓: Navigate"),
+		keyHint("enter", "Enter: Select"),
+		keyHint("u", "u: Updates"),
+		keyHint("q", "q: Quit"),
+	))
 	return RenderBox(b.String(), m.width)
 }

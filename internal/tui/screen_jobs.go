@@ -96,6 +96,13 @@ func (s JobsScreen) Update(msg tea.Msg) (JobsScreen, tea.Cmd) {
 		}
 		return s, nil
 
+	case rowClickMsg:
+		// Clicking only selects: Enter on a job starts a backup, which should
+		// not happen by accident. Use the "Back up now" hint instead.
+		s.pendingDelete = ""
+		clickRow(&s.selected, msg.index, len(s.svc.Cfg.Jobs))
+		return s, nil
+
 	case tea.KeyMsg:
 		jobs := s.svc.Cfg.Jobs
 		if msg.String() != "d" {
@@ -694,14 +701,14 @@ func (s JobsScreen) View() string {
 			}
 
 			details := fmt.Sprintf("(%s → %s, keep %d, %s)", j.Engine, j.Storage, j.Retention.KeepLast, strings.ToLower(describeCron(j.Schedule)))
-			line := fmt.Sprintf("%s%s  %s  %s  %s\n",
+			line := fmt.Sprintf("%s%s  %s  %s  %s",
 				prefix,
 				itemStyle.Render(j.Name),
 				styleSubtitle.Render(details),
 				featStr,
 				statusBadge,
 			)
-			b.WriteString(line)
+			b.WriteString(markRow(i, line) + "\n")
 		}
 		b.WriteString("\n")
 	}
@@ -710,7 +717,15 @@ func (s JobsScreen) View() string {
 		b.WriteString(s.statusMsg + "\n\n")
 	}
 
-	b.WriteString(styleHelp.Render("Enter/r: Back up now • t: Test • a: Add • e: Edit • d: Delete • b: Restore • Esc: Back"))
+	b.WriteString(hintBar(
+		keyHint("r", "Enter/r: Back up now"),
+		keyHint("t", "t: Test"),
+		keyHint("a", "a: Add"),
+		keyHint("e", "e: Edit"),
+		keyHint("d", "d: Delete"),
+		keyHint("b", "b: Restore"),
+		keyHint("esc", "Esc: Back"),
+	))
 	return RenderBox(b.String(), s.width)
 }
 

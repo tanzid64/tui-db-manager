@@ -78,6 +78,10 @@ func (s NotifyScreen) Update(msg tea.Msg) (NotifyScreen, tea.Cmd) {
 		}
 		return s, nil
 
+	case rowClickMsg:
+		clickRow(&s.selected, msg.index, len(s.svc.Cfg.Notifiers))
+		return s, nil
+
 	case tea.KeyMsg:
 		notifiers := s.svc.Cfg.Notifiers
 		switch msg.String() {
@@ -445,12 +449,12 @@ func (s NotifyScreen) View() string {
 				dest = n.URL
 			}
 
-			b.WriteString(fmt.Sprintf("%s%s  %s  %s\n",
+			b.WriteString(markRow(i, fmt.Sprintf("%s%s  %s  %s",
 				prefix,
 				itemStyle.Render(n.Name),
 				styleSubtitle.Render(fmt.Sprintf("[%s]", n.Type)),
 				dest,
-			))
+			)) + "\n")
 		}
 		b.WriteString("\n")
 	}
@@ -459,6 +463,12 @@ func (s NotifyScreen) View() string {
 		b.WriteString(s.statusMsg + "\n\n")
 	}
 
-	b.WriteString(styleHelp.Render("t: Test channel • a: Add • e: Edit • d: Delete • Esc: Back"))
+	b.WriteString(hintBar(
+		keyHint("t", "t: Test channel"),
+		keyHint("a", "a: Add"),
+		keyHint("e", "e: Edit"),
+		keyHint("d", "d: Delete"),
+		keyHint("esc", "Esc: Back"),
+	))
 	return RenderBox(b.String(), s.width)
 }

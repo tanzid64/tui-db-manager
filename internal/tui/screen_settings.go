@@ -79,6 +79,12 @@ func (s SettingsScreen) Update(msg tea.Msg) (SettingsScreen, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case rowClickMsg:
+		// Settings entries open on a single click, like a menu.
+		if msg.index >= 0 && msg.index < 5 {
+			s.selected = msg.index
+			return s, s.triggerOption(SettingsOption(s.selected))
+		}
 	case tea.KeyMsg:
 		optionsCount := 5
 		switch msg.String() {
@@ -304,14 +310,18 @@ func (s SettingsScreen) View() string {
 			prefix = styleSelected.Render("▶ ")
 			itemStyle = styleSelected
 		}
-		b.WriteString(fmt.Sprintf("%s%s\n    %s\n\n", prefix, itemStyle.Render(opt.title), styleSubtitle.Render(opt.desc)))
+		b.WriteString(markRow(i, fmt.Sprintf("%s%s\n    %s", prefix, itemStyle.Render(opt.title), styleSubtitle.Render(opt.desc))) + "\n\n")
 	}
 
 	if s.statusMsg != "" {
 		b.WriteString(s.statusMsg + "\n\n")
 	}
 
-	b.WriteString(styleHelp.Render("↑/k, ↓/j: Navigate • Enter: Open • Esc: Back"))
+	b.WriteString(hintBar(
+		styleHelp.Render("↑/↓: Navigate"),
+		keyHint("enter", "Enter: Open"),
+		keyHint("esc", "Esc: Back"),
+	))
 	return RenderBox(b.String(), s.width)
 }
 

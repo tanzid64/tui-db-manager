@@ -208,6 +208,27 @@ func (w *WizardModel) Update(msg tea.Msg) (WizardModel, tea.Cmd) {
 		w.SetSize(msg.Width, msg.Height)
 		return *w, nil
 
+	case fieldClickMsg:
+		if msg.index >= 0 && msg.index < len(step.Fields) {
+			w.ActiveField = msg.index
+			w.focusActiveField()
+			if f := &step.Fields[msg.index]; f.Type == FieldCheckbox {
+				f.Checked = !f.Checked
+			}
+		}
+		return *w, nil
+
+	case optionClickMsg:
+		if msg.field >= 0 && msg.field < len(step.Fields) {
+			f := &step.Fields[msg.field]
+			if msg.option >= 0 && msg.option < len(f.Options) {
+				f.SelectedOpt = msg.option
+			}
+			w.ActiveField = msg.field
+			w.focusActiveField()
+		}
+		return *w, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
@@ -332,41 +353,39 @@ func (w WizardModel) View() string {
 	}
 	b.WriteString("\n")
 
-	// Render Fields
+	// Render Fields. Each field is clickable; a select field's choices are
+	// clickable on their own.
 	for i, f := range step.Fields {
 		isActive := i == w.ActiveField
 		fieldPrefix := "  "
 		if isActive {
 			fieldPrefix = styleSelected.Render("▶ ")
 		}
-
-		b.WriteString(fieldPrefix)
 		labelStyle := styleNormal
 		if isActive {
 			labelStyle = styleFieldLabel
 		}
-		b.WriteString(labelStyle.Render(f.Label))
-		b.WriteString(": ")
+		label := fieldPrefix + labelStyle.Render(f.Label) + ": "
+		fieldID := fmt.Sprintf("field:%d", i)
 
 		switch f.Type {
 		case FieldText:
-			b.WriteString(f.Input.View())
+			b.WriteString(markZone(fieldID, label+f.Input.View()))
 		case FieldSelect:
-			optStr := ""
+			b.WriteString(markZone(fieldID, label))
 			for optIdx, opt := range f.Options {
 				if optIdx == f.SelectedOpt {
-					optStr += styleSelected.Render(fmt.Sprintf("[%s] ", opt))
+					b.WriteString(markZone(optZoneID(i, optIdx), styleSelected.Render(fmt.Sprintf("[%s]", opt))) + " ")
 				} else {
-					optStr += styleHelp.Render(fmt.Sprintf(" %s  ", opt))
+					b.WriteString(markZone(optZoneID(i, optIdx), styleHelp.Render(fmt.Sprintf(" %s ", opt))) + " ")
 				}
 			}
-			b.WriteString(optStr)
 		case FieldCheckbox:
 			check := "[ ]"
 			if f.Checked {
 				check = styleSelected.Render("[✓]")
 			}
-			b.WriteString(check)
+			b.WriteString(markZone(fieldID, label+check))
 		}
 		b.WriteString("\n\n")
 	}
@@ -377,6 +396,12 @@ func (w WizardModel) View() string {
 	}
 
 	// Navigation Help
-	b.WriteString(styleHelp.Render("Space: Toggle • Tab/Down: Next • Shift+Tab/Up: Prev • Enter: Next/Submit • Esc: Back"))
+	b.WriteString(hintBar(
+		styleHelp.Render("Space: Toggle"), // not clickable: it would type a space into text fields
+		keyHint("tab", "Tab/↓: Next"),
+		keyHint("shift+tab", "Shift+Tab/↑: Prev"),
+		keyHint("enter", "Enter: Next/Submit"),
+		keyHint("esc", "Esc: Back"),
+	))
 	return RenderBox(b.String(), w.width)
 }
