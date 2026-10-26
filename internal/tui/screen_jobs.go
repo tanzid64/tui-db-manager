@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/tanzid64/tui-db-manager/internal/config"
+	"github.com/tanzid64/tui-db-manager/internal/jobconn"
 )
 
 type JobsScreen struct {
@@ -239,6 +240,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 	pwdVal := ""
 	tlsChecked := false
 	dbVal := ""
+	sshVals := map[string]string{}
 
 	if existing != nil {
 		jobNameVal = existing.Name
@@ -260,6 +262,20 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 		tlsChecked = existing.Conn.TLS
 		if s.svc.Vault != nil {
 			pwdVal, _ = s.svc.Vault.Get("job/" + existing.Name + "/password")
+		}
+		if ssh := existing.Conn.SSH; ssh != nil {
+			sshVals["ssh_host"] = ssh.Host
+			if ssh.Port > 0 {
+				sshVals["ssh_port"] = strconv.Itoa(ssh.Port)
+			}
+			sshVals["ssh_user"] = ssh.User
+			sshVals["ssh_key"] = ssh.KeyPath
+			if s.svc.Vault != nil {
+				sshVals["ssh_password"], _ = s.svc.Vault.Get(jobconn.SSHPasswordVaultKey(existing.Name))
+				if _, ok := s.svc.Vault.Get(jobconn.SSHKeyVaultKey(existing.Name)); ok {
+					sshVals["ssh_key_in_vault"] = "true"
+				}
+			}
 		}
 	}
 
@@ -285,7 +301,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 	} else {
 		connStep := WizardStep{
 			Title:       "Server Connection",
-			Description: "Connection parameters for the database server",
+			Description: connStepDescription,
 			Fields: []WizardField{
 				{Key: "host", Label: "Host", Placeholder: "127.0.0.1", Value: hostVal, Type: FieldText},
 				{Key: "port", Label: "Port", Placeholder: portVal, Value: portVal, Type: FieldText},
@@ -301,7 +317,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 				{Key: "database", Label: "Database Name", Placeholder: "app_prod", Value: dbVal, Type: FieldText},
 			},
 		}
-		steps = []WizardStep{stepIdentity, connStep, stepDb, storageStep}
+		steps = []WizardStep{stepIdentity, connStep, sshStep(sshVals), stepDb, storageStep}
 	}
 
 	wizardTitle := "Add New Backup Job"
@@ -363,7 +379,7 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 				}
 				connStep := WizardStep{
 					Title:       "Server Connection",
-					Description: "Connection parameters for the database server",
+					Description: connStepDescription,
 					Fields:      connFields,
 				}
 				stepDb := WizardStep{
@@ -373,9 +389,9 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 						{Key: "database", Label: "Database Name", Placeholder: "app_prod", Value: vals["database"], Type: FieldText},
 					},
 				}
-				wiz.SetSteps([]WizardStep{wiz.Steps[0], connStep, stepDb, storageStep})
+				wiz.SetSteps([]WizardStep{wiz.Steps[0], connStep, sshStep(vals), stepDb, storageStep})
 			}
-		} else if currentStep == 1 && engine != "sqlite" {
+		} else if currentStep == stepSSH && engine != "sqlite" {
 			host := strings.TrimSpace(vals["host"])
 			if host == "" {
 				host = "127.0.0.1"
@@ -395,14 +411,26 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 			pwd := vals["password"]
 			useTLS := vals["tls"] == "true"
 
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			dbs, err := s.svc.ListDatabases(ctx, engine, config.Conn{
-				Host: host,
-				Port: port,
-				User: user,
-				TLS:  useTLS,
-			}, pwd)
+			timeout := 3 * time.Second
+			if strings.TrimSpace(vals["ssh_host"]) != "" {
+				timeout = 15 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			tunnel, err := s.wizardTunnel(ctx, vals)
+			var dbs []string
+			if err == nil {
+				dbs, err = s.svc.ListDatabases(ctx, engine, config.Conn{
+					Host: host,
+					Port: port,
+					User: user,
+					TLS:  useTLS,
+				}, pwd, tunnel)
+			}
 			cancel()
+			via := ""
+			if tunnel != nil {
+				via = " via ssh " + tunnel.Host
+			}
 
 			if err == nil && len(dbs) > 0 {
 				selectedDbIdx := 0
@@ -413,27 +441,27 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 						break
 					}
 				}
-				wiz.Steps[2] = WizardStep{
+				wiz.Steps[stepDatabase] = WizardStep{
 					Title:       "Target Database",
-					Description: fmt.Sprintf("Discovered %d databases on %s:%d — choose target database", len(dbs), host, port),
+					Description: fmt.Sprintf("Discovered %d databases on %s:%d%s — choose target database", len(dbs), host, port, via),
 					Fields: []WizardField{
 						{Key: "database", Label: "Database Name", Type: FieldSelect, Options: dbs, SelectedOpt: selectedDbIdx},
 					},
 				}
-				InitFields(wiz.Steps[2].Fields)
+				InitFields(wiz.Steps[stepDatabase].Fields)
 			} else {
 				desc := "Enter target database name manually"
 				if err != nil {
 					desc = fmt.Sprintf("Could not list databases (%s) — enter manually", err.Error())
 				}
-				wiz.Steps[2] = WizardStep{
+				wiz.Steps[stepDatabase] = WizardStep{
 					Title:       "Target Database",
 					Description: desc,
 					Fields: []WizardField{
 						{Key: "database", Label: "Database Name", Placeholder: "app_prod", Value: vals["database"], Type: FieldText},
 					},
 				}
-				InitFields(wiz.Steps[2].Fields)
+				InitFields(wiz.Steps[stepDatabase].Fields)
 			}
 		}
 	}
@@ -456,7 +484,9 @@ func (s *JobsScreen) openJobWizard(existing *config.Job) {
 					return errors.New("SQLite path cannot be empty")
 				}
 			}
-		} else if stepIndex == 2 && engine != "sqlite" {
+		} else if stepIndex == stepSSH && engine != "sqlite" {
+			return validateSSHValues(vals)
+		} else if stepIndex == stepDatabase && engine != "sqlite" {
 			if strings.TrimSpace(vals["database"]) == "" {
 				return errors.New("database name cannot be empty")
 			}
@@ -505,6 +535,7 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 			job = existing
 		}
 	}
+	prevSSH := job.Conn.SSH
 	job.Name = name
 	job.Engine = engine
 	job.Conn = config.Conn{
@@ -518,6 +549,8 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 	}
 	if engine == "sqlite" {
 		job.Conn.Host, job.Conn.Port = "", 0
+	} else {
+		job.Conn.SSH = sshConfigFromValues(vals, prevSSH)
 	}
 	job.Storage = vals["storage"]
 	job.Retention = config.Retention{KeepLast: keepLast}
@@ -547,6 +580,12 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 		}
 	}
 
+	oldName := ""
+	if s.isEditing {
+		oldName = s.editingJobName
+	}
+	sshNote := s.saveJobSSH(&job, oldName, vals)
+
 	if s.isEditing {
 		updated := false
 		for i, existingJob := range s.svc.Cfg.Jobs {
@@ -572,7 +611,11 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 			_ = s.svc.RemoveSchedule(s.editingJobName)
 			_ = s.svc.InstallSchedule(name, job.Schedule)
 		}
-		s.statusMsg = styleSuccess.Render(fmt.Sprintf("✔ Updated job %q", name))
+		msg := fmt.Sprintf("✔ Updated job %q", name)
+		if sshNote != "" {
+			msg += " — " + sshNote
+		}
+		s.statusMsg = styleSuccess.Render(msg)
 	} else {
 		s.svc.Cfg.Jobs = append(s.svc.Cfg.Jobs, job)
 		if err := s.svc.SaveConfig(); err != nil {
@@ -581,6 +624,9 @@ func (s *JobsScreen) handleJobWizardFinish(vals map[string]string) {
 		}
 		s.selected = len(s.svc.Cfg.Jobs) - 1
 		msg := fmt.Sprintf("✔ Added job %q — press t to test it, r to run a backup now", name)
+		if sshNote != "" {
+			msg += " — " + sshNote
+		}
 		if job.Encrypt {
 			msg += ". Backups are encrypted: save a settings backup (Settings → Export Settings Backup) or they can't be restored on a new server"
 		}
@@ -613,6 +659,9 @@ func (s JobsScreen) View() string {
 			}
 
 			features := make([]string, 0)
+			if j.Conn.SSH != nil {
+				features = append(features, "ssh")
+			}
 			if j.Compress {
 				features = append(features, "gz")
 			}

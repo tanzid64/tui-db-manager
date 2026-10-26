@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
+	"github.com/tanzid64/tui-db-manager/internal/jobconn"
 	"github.com/tanzid64/tui-db-manager/internal/notify"
 	"github.com/tanzid64/tui-db-manager/internal/secretref"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
@@ -122,6 +123,18 @@ func resolvePassword(v SecretGetter) func(config.Job) (string, error) {
 			return "", nil
 		}
 		return secretref.Resolve(ref, lookup)
+	}
+}
+
+// resolveSSH returns a closure that resolves a job's SSH tunnel secrets from
+// key files, env:/file: refs, or the vault.
+func resolveSSH(v SecretGetter) func(config.Job) (*db.SSHTunnel, error) {
+	return func(j config.Job) (*db.SSHTunnel, error) {
+		var lookup jobconn.Lookup
+		if v != nil {
+			lookup = v.Get
+		}
+		return jobconn.ResolveSSH(j, lookup)
 	}
 }
 

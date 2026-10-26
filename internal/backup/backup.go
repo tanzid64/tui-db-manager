@@ -9,6 +9,7 @@ import (
 
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
+	"github.com/tanzid64/tui-db-manager/internal/jobconn"
 	"github.com/tanzid64/tui-db-manager/internal/logutil"
 	"github.com/tanzid64/tui-db-manager/internal/notify"
 	"github.com/tanzid64/tui-db-manager/internal/pipeline"
@@ -32,9 +33,12 @@ type Deps struct {
 	// "job/<name>/age_identity". Backup itself only needs the recipient, but
 	// ResolveIdentity is part of Deps so restore can share the same wiring.
 	ResolveIdentity func(config.Job) (string, error)
-	Notifier        func(config.NotifierConfig) (notify.Notifier, error)
-	Now             func() time.Time
-	Log             *logutil.Logger
+	// ResolveSSH resolves the job's SSH tunnel secrets. nil falls back to
+	// key files, env:/file: refs and ssh-agent only (no vault).
+	ResolveSSH func(config.Job) (*db.SSHTunnel, error)
+	Notifier   func(config.NotifierConfig) (notify.Notifier, error)
+	Now        func() time.Time
+	Log        *logutil.Logger
 }
 
 func extFor(engine string) string {
@@ -126,6 +130,12 @@ func runBackup(ctx context.Context, d Deps, job config.Job) (storage.Object, err
 		Host: job.Conn.Host, Port: job.Conn.Port, User: job.Conn.User,
 		Password: pw, Database: job.Conn.Database, Path: job.Conn.Path, TLS: job.Conn.TLS,
 	}
+	if conn.SSH, err = resolveSSH(d.ResolveSSH, job); err != nil {
+		return storage.Object{}, err
+	}
+	if conn.SSH != nil && conn.SSH.Password != "" {
+		d.Log.Redact(conn.SSH.Password)
+	}
 
 	if job.Encrypt && job.EncryptRecipient == "" {
 		return storage.Object{}, fmt.Errorf("job %q has encrypt: true but no encrypt_recipient", job.Name)
@@ -215,4 +225,11 @@ func runBackup(ctx context.Context, d Deps, job config.Job) (storage.Object, err
 		}
 	}
 	return obj, nil
+}
+
+func resolveSSH(fn func(config.Job) (*db.SSHTunnel, error), job config.Job) (*db.SSHTunnel, error) {
+	if fn == nil {
+		return jobconn.ResolveSSH(job, nil)
+	}
+	return fn(job)
 }

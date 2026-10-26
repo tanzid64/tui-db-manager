@@ -44,6 +44,26 @@ type Conn struct {
 	// PasswordRef optionally resolves the password from "env:VAR" or "file:/path"
 	// instead of the vault. Empty means "look in the vault".
 	PasswordRef string `yaml:"password_ref,omitempty" json:"password_ref,omitempty"`
+	// SSH, when set, connects to Host:Port through an SSH server. Host and
+	// Port are then as seen from that server (default 127.0.0.1).
+	SSH *SSH `yaml:"ssh,omitempty" json:"ssh,omitempty"`
+}
+
+// SSH is an SSH server used to tunnel to a database that isn't reachable
+// directly. With no key and no password, ssh-agent is used.
+type SSH struct {
+	Host string `yaml:"host" json:"host"`
+	Port int    `yaml:"port,omitempty" json:"port,omitempty"` // default 22
+	User string `yaml:"user" json:"user"`
+	// KeyPath is a private key file on disk. Empty means the vault key
+	// "job/<name>/ssh_key" if present.
+	KeyPath string `yaml:"key_path,omitempty" json:"key_path,omitempty"`
+	// PasswordRef is "env:NAME" or "file:/path"; empty means the vault key
+	// "job/<name>/ssh_password". Used for password auth and as the key passphrase.
+	PasswordRef string `yaml:"password_ref,omitempty" json:"password_ref,omitempty"`
+	// HostKey pins the server's SHA256 key fingerprint. Empty means the host
+	// must be in ~/.ssh/known_hosts.
+	HostKey string `yaml:"host_key,omitempty" json:"host_key,omitempty"`
 }
 
 type Retention struct {

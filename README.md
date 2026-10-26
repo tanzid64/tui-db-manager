@@ -14,6 +14,7 @@
 ## Key Highlights
 
 - **Multi-Database Support:** Native streaming dump and restore drivers for **MySQL / MariaDB**, **PostgreSQL**, **MongoDB**, and **SQLite**.
+- **Remote Databases over SSH:** Back up and restore databases that only listen on their server or sit behind a firewall, through a built-in SSH tunnel (key, password, or ssh-agent auth, with host key pinning). No `ssh -L` or extra tools needed.
 - **Versatile Storage Destinations:** Stream backups directly to **Local Filesystems**, **AWS S3**, **Cloudflare R2**, **MinIO**, **Backblaze B2**, or **Google Drive**.
 - **Streaming Compression & At-Rest Encryption:**
   - Lightweight streaming **Gzip** compression.
@@ -130,6 +131,23 @@ dbk secret ls
 dbk secret rm job/production-postgres/password
 ```
 
+#### Remote Databases over SSH
+
+Give a job an `ssh` block (or fill in the **SSH Tunnel** step in the TUI job wizard) and every test, backup, and restore runs through an SSH port forward. The job's `host`/`port` are then as seen from the SSH server, so a database bound to `127.0.0.1` on that server works as is.
+
+```bash
+# Store the SSH private key (or password / key passphrase) in the vault
+dbk secret set job/production-postgres/ssh_key --stdin < ~/.ssh/id_ed25519
+dbk secret set job/production-postgres/ssh_password --stdin < ssh-pass.txt
+
+# Check the database is reachable through the tunnel
+dbk test production-postgres
+```
+
+The SSH server's host key must be pinned (`ssh.host_key`) or listed in `~/.ssh/known_hosts`. The TUI pins it when you save the job. From the CLI, `dbk test` prints the fingerprint to pin when the host is unknown.
+
+SSH keys and passwords live in the same encrypted vault (`dbk.db`) as your database passwords, so scheduled runs unlock them with the master key and need nothing else. A key file picked in the TUI wizard is copied into the vault, so it also travels with settings backups. Scheduled runs have no ssh-agent, so don't rely on the agent for scheduled jobs.
+
 #### Install Automated Schedules
 ```bash
 # Register a daily 3:00 AM backup (crontab when available, otherwise systemd)
@@ -173,6 +191,16 @@ jobs:
       database: app_prod
       # password stored in vault under "job/production-postgres/password"
       # or explicitly referenced: password_ref: "env:DB_PASSWORD"
+      # Optional: reach the database through an SSH server. host/port above
+      # are then as seen from that server.
+      ssh:
+        host: db.example.com
+        port: 22
+        user: deploy
+        key_path: ~/.ssh/id_ed25519   # or vault key "job/<name>/ssh_key"; blank = ssh-agent
+        # password_ref: "env:SSH_PASSWORD" (default vault key "job/<name>/ssh_password");
+        # also used as the key passphrase
+        host_key: "SHA256:..."         # pinned fingerprint; blank = ~/.ssh/known_hosts
     storage: s3-backups
     retention:
       keep_last: 14

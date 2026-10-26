@@ -16,6 +16,7 @@ import (
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
 	"github.com/tanzid64/tui-db-manager/internal/history"
+	"github.com/tanzid64/tui-db-manager/internal/jobconn"
 	"github.com/tanzid64/tui-db-manager/internal/logutil"
 	"github.com/tanzid64/tui-db-manager/internal/notify"
 	"github.com/tanzid64/tui-db-manager/internal/restore"
@@ -404,8 +405,19 @@ func (s *Service) ResolveJobIdentity(j config.Job) (string, error) {
 	return "", fmt.Errorf("age identity for job %q not found in vault", j.Name)
 }
 
-func (s *Service) ListDatabases(ctx context.Context, engine string, conn config.Conn, password string) ([]string, error) {
+// ResolveJobSSH resolves the job's SSH tunnel settings (nil if it has none).
+func (s *Service) ResolveJobSSH(j config.Job) (*db.SSHTunnel, error) {
+	var lookup jobconn.Lookup
+	if s.Vault != nil {
+		lookup = s.Vault.Get
+	}
+	return jobconn.ResolveSSH(j, lookup)
+}
+
+// ListDatabases lists databases on the server, through tunnel when non-nil.
+func (s *Service) ListDatabases(ctx context.Context, engine string, conn config.Conn, password string, tunnel *db.SSHTunnel) ([]string, error) {
 	c := db.Conn{
+		SSH:      tunnel,
 		Host:     conn.Host,
 		Port:     conn.Port,
 		User:     conn.User,
@@ -437,6 +449,7 @@ func (s *Service) RunBackup(ctx context.Context, jobName string) (RunRecord, err
 		},
 		ResolvePassword: s.ResolveJobPassword,
 		ResolveIdentity: s.ResolveJobIdentity,
+		ResolveSSH:      s.ResolveJobSSH,
 		Notifier: func(nc config.NotifierConfig) (notify.Notifier, error) {
 			return s.BuildNotifier(ctx, nc)
 		},
@@ -508,6 +521,7 @@ func (s *Service) RunRestore(ctx context.Context, jobName, storageName, key, toD
 		},
 		ResolvePassword: s.ResolveJobPassword,
 		ResolveIdentity: s.ResolveJobIdentity,
+		ResolveSSH:      s.ResolveJobSSH,
 		Log:             s.Log,
 	}
 
@@ -634,9 +648,14 @@ func (s *Service) TestJob(ctx context.Context, jobName string) error {
 	if err != nil {
 		return err
 	}
+	tunnel, err := s.ResolveJobSSH(job)
+	if err != nil {
+		return err
+	}
 	return eng.Test(ctx, db.Conn{
 		Host: job.Conn.Host, Port: job.Conn.Port, User: job.Conn.User,
 		Password: pw, Database: job.Conn.Database, Path: job.Conn.Path, TLS: job.Conn.TLS,
+		SSH: tunnel,
 	})
 }
 

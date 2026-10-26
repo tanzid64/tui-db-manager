@@ -70,6 +70,7 @@ func newRestoreCmd() *cobra.Command {
 				Backend:         func() storage.Backend { return be },
 				ResolvePassword: resolvePassword(v),
 				ResolveIdentity: resolveIdentity(v),
+				ResolveSSH:      resolveSSH(v),
 				Log:             app.log,
 			}
 			start := time.Now()

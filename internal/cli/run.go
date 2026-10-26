@@ -40,6 +40,7 @@ func newRunCmd() *cobra.Command {
 				},
 				ResolvePassword: resolvePassword(v),
 				ResolveIdentity: resolveIdentity(v),
+				ResolveSSH:      resolveSSH(v),
 				Notifier: func(nc config.NotifierConfig) (notify.Notifier, error) {
 					return buildNotifier(cmd.Context(), nc, v)
 				},

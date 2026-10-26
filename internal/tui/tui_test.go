@@ -288,21 +288,28 @@ func TestJobsScreenWizardEnterCompletion(t *testing.T) {
 	if screen.wizard.ActiveField != 4 {
 		t.Fatalf("expected active field 4 (tls), got %d", screen.wizard.ActiveField)
 	}
-	// Press Enter on Field 4 (last field of Step 1) -> advances to Step 2 (Target Database)
+	// Press Enter on Field 4 (last field of Step 1) -> advances to Step 2 (SSH Tunnel)
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if screen.wizard.ActiveStep != 2 {
-		t.Fatalf("expected step 2 (Target Database), got %d", screen.wizard.ActiveStep)
+		t.Fatalf("expected step 2 (SSH Tunnel), got %d", screen.wizard.ActiveStep)
 	}
-
-	// Step 2: Target Database (manual entry fallback in test environment)
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("mydb")})
-	// Press Enter on database field (last field of Step 2) -> advances to Step 3 (Storage & Retention)
-	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Step 2: SSH Tunnel, left blank (5 fields) -> Step 3 (Target Database)
+	for f := 0; f < 5; f++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	}
 	if screen.wizard.ActiveStep != 3 {
-		t.Fatalf("expected step 3 (Storage & Retention), got %d", screen.wizard.ActiveStep)
+		t.Fatalf("expected step 3 (Target Database), got %d", screen.wizard.ActiveStep)
 	}
 
-	// Step 3: Storage & Retention (4 fields)
+	// Step 3: Target Database (manual entry fallback in test environment)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("mydb")})
+	// Press Enter on database field (last field of Step 3) -> advances to Step 4 (Storage & Retention)
+	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if screen.wizard.ActiveStep != 4 {
+		t.Fatalf("expected step 4 (Storage & Retention), got %d", screen.wizard.ActiveStep)
+	}
+
+	// Step 4: Storage & Retention (4 fields)
 	// Fields: 0: storage (select), 1: keep_last (text), 2: compress (checkbox), 3: encrypt (checkbox)
 	for i := 0; i < 4; i++ {
 		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -375,15 +382,19 @@ func TestJobsScreenWizardLiveDatabaseSelection(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	}
-	// Press Enter on tls (last field of Step 1) -> triggers OnStepAdvance with live ListDatabases!
+	// Press Enter on tls (last field of Step 1) -> SSH Tunnel step
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-
-	if screen.wizard.ActiveStep != 2 {
-		t.Fatalf("expected step 2 (Target Database), got %d", screen.wizard.ActiveStep)
+	// Leave SSH blank; Enter on its last field triggers OnStepAdvance with live ListDatabases!
+	for i := 0; i < 5; i++ {
+		screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	}
 
-	// Verify Step 2 has FieldSelect with the discovered databases!
-	dbField := screen.wizard.Steps[2].Fields[0]
+	if screen.wizard.ActiveStep != 3 {
+		t.Fatalf("expected step 3 (Target Database), got %d", screen.wizard.ActiveStep)
+	}
+
+	// Verify Step 3 has FieldSelect with the discovered databases!
+	dbField := screen.wizard.Steps[3].Fields[0]
 	if dbField.Type != FieldSelect {
 		t.Fatalf("expected FieldSelect for database selection, got %v", dbField.Type)
 	}
@@ -396,14 +407,14 @@ func TestJobsScreenWizardLiveDatabaseSelection(t *testing.T) {
 
 	// Select the second database: "users_prod" (Right arrow)
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRight})
-	if screen.wizard.Steps[2].Fields[0].SelectedOpt != 1 {
+	if screen.wizard.Steps[3].Fields[0].SelectedOpt != 1 {
 		t.Fatalf("expected selected opt 1 (users_prod)")
 	}
 
-	// Press Enter on database selection -> advances to Step 3 (Storage & Retention)
+	// Press Enter on database selection -> advances to Step 4 (Storage & Retention)
 	screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if screen.wizard.ActiveStep != 3 {
-		t.Fatalf("expected step 3, got %d", screen.wizard.ActiveStep)
+	if screen.wizard.ActiveStep != 4 {
+		t.Fatalf("expected step 4, got %d", screen.wizard.ActiveStep)
 	}
 
 	// Press Enter across storage and retention fields to complete (4 fields)
@@ -988,5 +999,93 @@ func TestRestoreListsBackupsFromPreviousStorage(t *testing.T) {
 	}
 	if seen["old-local"] != "shop/shop-old.sql" || seen["new-local"] != "shop/shop-new.sql" {
 		t.Fatalf("backups not tagged with their storage: %v", seen)
+	}
+}
+
+func TestJobWizardSavesSSHTunnel(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	if err := svc.CreateVault("vault-pass"); err != nil {
+		t.Fatalf("CreateVault: %v", err)
+	}
+	screen := NewJobsScreen(svc, nil, nil)
+	key := func(s string) { screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}) }
+	enter := func(n int) {
+		for i := 0; i < n; i++ {
+			screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		}
+	}
+	clear := func() { screen, _ = screen.Update(tea.KeyMsg{Type: tea.KeyCtrlU}) }
+
+	key("a")
+	key("tunneled")
+	enter(2) // name, engine -> Server Connection
+	enter(5) // host, port, user, password, tls -> SSH Tunnel
+	if screen.wizard.ActiveStep != stepSSH {
+		t.Fatalf("expected SSH step, got %d", screen.wizard.ActiveStep)
+	}
+	key("127.0.0.1") // ssh host
+	enter(1)
+	clear()
+	key("1") // closed port: host key lookup fails fast
+	enter(1)
+	key("deploy") // ssh user
+	enter(2)      // user, key file (blank)
+	key("sshpass")
+	enter(1) // -> Target Database (listing fails, manual entry)
+	if screen.wizard.ActiveStep != stepDatabase {
+		t.Fatalf("expected database step, got %d (err %q)", screen.wizard.ActiveStep, screen.wizard.ErrMessage)
+	}
+	key("app")
+	enter(1)
+	enter(4) // storage step
+	if screen.isWizardOpen {
+		t.Fatalf("wizard still open: %q", screen.wizard.ErrMessage)
+	}
+
+	job, ok := svc.Cfg.Job("tunneled")
+	if !ok || job.Conn.SSH == nil {
+		t.Fatalf("job saved without SSH: %+v", job)
+	}
+	if ssh := job.Conn.SSH; ssh.Host != "127.0.0.1" || ssh.Port != 1 || ssh.User != "deploy" || ssh.HostKey != "" {
+		t.Fatalf("unexpected ssh block %+v", ssh)
+	}
+	if pw, _ := svc.Vault.Get("job/tunneled/ssh_password"); pw != "sshpass" {
+		t.Fatalf("ssh password not stored in vault, got %q", pw)
+	}
+	if !strings.Contains(screen.statusMsg, "could not read SSH host key") {
+		t.Fatalf("expected host key warning in status, got %q", screen.statusMsg)
+	}
+}
+
+func TestSaveJobSSHImportsKeyIntoVault(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := NewService(dir, "")
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	if err := svc.CreateVault("vault-pass"); err != nil {
+		t.Fatalf("CreateVault: %v", err)
+	}
+	keyFile := filepath.Join(dir, "id_test")
+	if err := os.WriteFile(keyFile, []byte("PRIVATE KEY\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	screen := NewJobsScreen(svc, nil, nil)
+	// Port 1 is closed, so the host key lookup fails fast.
+	job := config.Job{Name: "j", Conn: config.Conn{SSH: &config.SSH{Host: "127.0.0.1", Port: 1, User: "u", KeyPath: keyFile}}}
+	note := screen.saveJobSSH(&job, "", map[string]string{})
+
+	if job.Conn.SSH.KeyPath != "" {
+		t.Fatalf("key path kept after import: %q", job.Conn.SSH.KeyPath)
+	}
+	if k, _ := svc.Vault.Get("job/j/ssh_key"); k != "PRIVATE KEY" {
+		t.Fatalf("key not in vault, got %q", k)
+	}
+	if !strings.Contains(note, "stored in the vault") || strings.Contains(note, "ssh-agent") {
+		t.Fatalf("unexpected note %q", note)
 	}
 }

@@ -14,6 +14,8 @@ type Conn struct {
 	Database string
 	Path     string // sqlite
 	TLS      bool
+	// SSH, when set, reaches Host:Port through an SSH port forward.
+	SSH *SSHTunnel
 }
 
 type Job struct {

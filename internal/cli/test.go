@@ -44,10 +44,17 @@ func newTestCmd() *cobra.Command {
 					Host: job.Conn.Host, Port: job.Conn.Port, User: job.Conn.User,
 					Password: pw, Database: job.Conn.Database, Path: job.Conn.Path, TLS: job.Conn.TLS,
 				}
+				if conn.SSH, err = resolveSSH(v)(job); err != nil {
+					return err
+				}
 				if err := eng.Test(cmd.Context(), conn); err != nil {
 					return err
 				}
-				cmd.Printf("job %q connection OK\n", target)
+				if conn.SSH != nil {
+					cmd.Printf("job %q connection OK (via ssh %s)\n", target, conn.SSH.Host)
+				} else {
+					cmd.Printf("job %q connection OK\n", target)
+				}
 				return nil
 			}
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/tanzid64/tui-db-manager/internal/config"
 	"github.com/tanzid64/tui-db-manager/internal/db"
+	"github.com/tanzid64/tui-db-manager/internal/jobconn"
 	"github.com/tanzid64/tui-db-manager/internal/logutil"
 	"github.com/tanzid64/tui-db-manager/internal/pipeline"
 	"github.com/tanzid64/tui-db-manager/internal/storage"
@@ -23,7 +24,10 @@ type Deps struct {
 	// ResolveIdentity resolves the age identity (private key) from the vault
 	// key "job/<name>/age_identity". Required when restoring an encrypted backup.
 	ResolveIdentity func(config.Job) (string, error)
-	Log             *logutil.Logger
+	// ResolveSSH resolves the job's SSH tunnel secrets. nil falls back to
+	// key files, env:/file: refs and ssh-agent only (no vault).
+	ResolveSSH func(config.Job) (*db.SSHTunnel, error)
+	Log        *logutil.Logger
 }
 
 func LatestKey(objs []storage.Object, jobPrefix string) (string, bool) {
@@ -86,6 +90,17 @@ func Run(ctx context.Context, d Deps, jobName, atKey, toDatabase string, confirm
 	conn := db.Conn{
 		Host: job.Conn.Host, Port: job.Conn.Port, User: job.Conn.User,
 		Password: pw, Database: target, Path: path, TLS: job.Conn.TLS,
+	}
+	if d.ResolveSSH != nil {
+		conn.SSH, err = d.ResolveSSH(job)
+	} else {
+		conn.SSH, err = jobconn.ResolveSSH(job, nil)
+	}
+	if err != nil {
+		return err
+	}
+	if conn.SSH != nil && conn.SSH.Password != "" {
+		d.Log.Redact(conn.SSH.Password)
 	}
 	dest := target
 	if path != "" {
