@@ -109,7 +109,9 @@ func (t SSHTunnel) authMethods() ([]ssh.AuthMethod, func(), error) {
 		}
 		methods = append(methods, ssh.PublicKeys(signer))
 	}
-	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" && len(t.PrivateKey) == 0 {
+	// Use ssh-agent only when nothing else is configured: its keys count
+	// against the server's MaxAuthTries and could lock out the password.
+	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" && len(t.PrivateKey) == 0 && t.Password == "" {
 		if conn, err := net.Dial("unix", sock); err == nil {
 			methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
 			cleanup = func() { conn.Close() }

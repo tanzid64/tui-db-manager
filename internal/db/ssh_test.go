@@ -302,3 +302,25 @@ func TestTunneledEngineWithoutSSHPassesThrough(t *testing.T) {
 		t.Fatalf("direct conn changed: %+v", got)
 	}
 }
+
+func TestPasswordSkipsAgent(t *testing.T) {
+	// A live agent socket must not be used when a password is set.
+	sock := filepath.Join(t.TempDir(), "agent.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Skipf("unix socket: %v", err)
+	}
+	defer ln.Close()
+	t.Setenv("SSH_AUTH_SOCK", sock)
+
+	methods, cleanup, err := SSHTunnel{Password: "secret"}.authMethods()
+	defer cleanup()
+	if err != nil || len(methods) != 2 { // password + keyboard-interactive
+		t.Fatalf("expected only password methods, got %d (%v)", len(methods), err)
+	}
+	methods, cleanup2, _ := SSHTunnel{}.authMethods()
+	defer cleanup2()
+	if len(methods) != 1 {
+		t.Fatalf("expected agent when nothing else is set, got %d", len(methods))
+	}
+}
