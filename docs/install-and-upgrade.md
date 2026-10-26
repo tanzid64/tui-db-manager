@@ -43,7 +43,7 @@ export DBK_MASTER_KEY="your-chosen-master-password"
 dbk init
 ```
 
-**What this creates:**
+**What this creates** (paths shown for Linux; on macOS the folder is `~/Library/Application Support/dbk`):
 - `~/.config/dbk/dbk.db` (`0600` permissions) — SQLite database containing your jobs, storages, notifiers, history, and encrypted secrets.
 - `~/.config/dbk/env` (`0600` permissions) — Contains `export DBK_MASTER_KEY="..."` for persistent CLI use.
 

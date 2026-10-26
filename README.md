@@ -81,6 +81,8 @@ When opened, `dbk` launches into the interactive dashboard. If your vault is loc
 - **History:** The last 20 backups and restores, including scheduled runs, with errors.
 - **Settings:** Notifications (Telegram, email, webhook), export/import, updates, and uninstall.
 
+> **Client tools:** dbk runs the database's own tools (`mysqldump`, `pg_dump`, `mongodump`, `sqlite3`) on the computer where dbk runs, even for remote databases. The job wizard marks each engine ✔ or ✖, the job list flags jobs whose tools are missing, and `dbk run`/`test`/`restore` stop early with the install command for your system. On macOS, Homebrew's `mysql-client` and `libpq` and Postgres.app are found automatically.
+
 > **cPanel tip:** use the database user cPanel created (e.g. `account_dbuser`) with host `localhost` or `127.0.0.1`. dbk passes `--no-tablespaces`, so the dump works without the global PROCESS privilege that shared hosting never grants.
 
 ### 2. Headless Automation (CLI)
@@ -176,7 +178,7 @@ dbk config import backup-bundle.yaml --yes
 
 ## Configuration Reference (`config.yaml`)
 
-Configuration is stored in `~/.config/dbk/config.yaml` (or `%APPDATA%\dbk\config.yaml` on Windows).
+dbk keeps its data (`dbk.db`, `env`, `logs/`, `schedules/`) in `~/.config/dbk` on Linux, `~/Library/Application Support/dbk` on macOS, and `%APPDATA%\dbk` on Windows. Paths below use the Linux location.
 
 ```yaml
 version: 1

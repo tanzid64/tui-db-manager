@@ -283,6 +283,8 @@
   .cli-alt { margin-top: 20px; border-top: 1px dashed var(--border); padding-top: 16px; }
   .cli-alt p { margin: 0 0 8px; font-size: .88rem; color: var(--muted); font-weight: 600; }
   .cli-alt .cmd + .cmd { margin-top: 8px; }
+  .card .cmd { margin: 10px 0; }
+  .card p + p { margin-top: 8px; }
   .step-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 22px; }
   .step-nav .btn[disabled] { opacity: .4; cursor: default; }
   @media (max-width: 900px) {
@@ -423,6 +425,7 @@
       <a href="#steps">How it works</a>
       <a href="#storage">Storage</a>
       <a href="#hosting">VPS &amp; cPanel</a>
+      <a href="#remote">Remote DBs</a>
       <a href="#security">Security</a>
       <a href="#help">Help</a>
       <a href="#cli">Commands</a>
@@ -540,10 +543,10 @@ default local storage "local" -> /home/you/dbk-backups
         <!-- Step 2 -->
         <div class="step-panel" role="tabpanel" id="sp-2" aria-labelledby="st-2" hidden>
           <h3>2. Add your database</h3>
-          <p>Open <strong>Backup Jobs</strong> and press <kbd>a</kbd>. A short form asks four things. Your password is stored encrypted on the server and never shown in process lists.</p>
+          <p>Open <strong>Backup Jobs</strong> and press <kbd>a</kbd>. A short form walks you through it. Your password is stored encrypted on the server and never shown in process lists.</p>
           <div class="term">
             <div class="term-bar"><i></i><i></i><i></i><span>dbk › Backup Jobs › Add</span></div>
-<pre><span class="t-purple">Add New Backup Job — Step 2 of 4: Server Connection</span>
+<pre><span class="t-purple">Add New Backup Job — Step 2 of 5: Server Connection</span>
 <span class="t-dim">Connection parameters for the database server</span>
 
 <span class="t-sel">▶ Host:     127.0.0.1                    </span>
@@ -555,8 +558,9 @@ default local storage "local" -> /home/you/dbk-backups
 <span class="t-dim">Tab/↓ Next • Enter Next/Submit • Esc Back</span></pre>
           </div>
           <ul class="do-list">
-            <li><span><strong>Name &amp; type</strong> — any name (e.g. <code>shop</code>), then MySQL/MariaDB, PostgreSQL, MongoDB or SQLite (<kbd>←</kbd> <kbd>→</kbd> to choose).</span></li>
+            <li><span><strong>Name &amp; type</strong> — any name (e.g. <code>shop</code>), then MySQL/MariaDB, PostgreSQL, MongoDB or SQLite (<kbd>←</kbd> <kbd>→</kbd> to choose). Each type shows <strong>✔</strong> or <strong>✖ tools missing</strong>, so you know right away if this computer can back it up.</span></li>
             <li><span><strong>Connection</strong> — host, port, user, password. Ports and users fill in for the type you picked.</span></li>
+            <li><span><strong>SSH tunnel</strong> <em>(optional)</em> — for a database on another server that isn't open to the internet. Leave it blank to connect directly. See <a href="#remote">Remote databases</a>.</span></li>
             <li><span><strong>Database</strong> — dbk lists the databases it can see; pick one.</span></li>
             <li><span><strong>Storage &amp; keep</strong> — <code>local</code> is preselected. Keep last <code>7</code> backups, gzip compression and <strong>Encrypt backups</strong> are on by default.</span></li>
           </ul>
@@ -831,12 +835,88 @@ default local storage "local" -> /home/you/dbk-backups
       </div>
     </div>
 
+    <div class="note"><span class="ic">🍎</span><p><strong>On a Mac</strong>, install the tools with Homebrew: <code>brew install mysql-client</code> (or <code>mariadb</code>), <code>libpq</code> for PostgreSQL. dbk finds them even though Homebrew doesn't add them to your PATH, and Postgres.app works too. dbk keeps its data in <code>~/Library/Application Support/dbk</code> instead of <code>~/.config/dbk</code>.</p></div>
+
     <div class="note warn"><span class="ic">⚠</span><p><strong>Backups on the same server aren't enough on their own.</strong> If the server or hosting account is lost, so is <code>~/dbk-backups</code>. Add a bucket or Google Drive for important databases.</p></div>
   </div>
 </section>
 
+<!-- ================= REMOTE ================= -->
+<section id="remote" style="background: var(--bg-soft);">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Remote databases</p>
+      <h2>Back up a database on another server</h2>
+      <p>Run dbk on one machine and back up databases on others. Connect directly, or through SSH when the database isn't open to the internet. No <code>ssh -L</code> or extra programs needed.</p>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Direct</h3>
+        <p>Enter the server's address and port in <strong>Server Connection</strong> and leave the SSH step blank. Turn on <strong>Use TLS</strong> if the database server has SSL enabled.</p>
+        <p>Only use this when the database port is meant to be reachable over the network. Without TLS, the backup crosses the network unencrypted.</p>
+      </div>
+      <div class="card">
+        <h3>Through SSH <span class="tag">Recommended</span></h3>
+        <p>Fill in the <strong>SSH Tunnel</strong> step. The database can stay closed to the internet: dbk logs in over SSH and reaches it from inside the server, so <strong>Host</strong> is usually <code>127.0.0.1</code>.</p>
+        <ul class="check">
+          <li><span>Log in with a key file, a password, or ssh-agent.</span></li>
+          <li><span>A key file you pick is copied into dbk's encrypted vault, so scheduled backups don't depend on the file.</span></li>
+          <li><span>The server's identity is pinned when you save the job, and dbk refuses to connect if it changes.</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="term" style="margin-top:24px;">
+      <div class="term-bar"><i></i><i></i><i></i><span>dbk › Backup Jobs › Add</span></div>
+<pre><span class="t-purple">Add New Backup Job — Step 3 of 5: SSH Tunnel (optional)</span>
+<span class="t-dim">Leave SSH Host blank to connect directly.</span>
+
+<span class="t-sel">▶ SSH Host:          203.0.113.10         </span>
+  SSH Port:          22
+  SSH User:          <span class="t-yellow">dbkbackup</span>
+  Private Key File:  ~/.ssh/dbk_vps
+  SSH Password:      <span class="t-dim">optional</span>
+
+<span class="t-green">✔ Added job "shop" — SSH key stored in the vault; pinned SSH host key SHA256:…</span></pre>
+    </div>
+
+    <h3 style="margin-top:40px;">Set up a VPS for SSH backups</h3>
+    <p>Run these on the VPS (Ubuntu/Debian; works for MySQL and MariaDB). The SSH account can only reach MySQL. It has no shell.</p>
+    <div class="grid-2">
+      <div class="card">
+        <h3>1. Keep MySQL private</h3>
+        <p>In <code>mysqld.cnf</code> (MariaDB: <code>50-server.cnf</code>) set <code>bind-address = 127.0.0.1</code>, restart MySQL, and close the port:</p>
+        <div class="cmd"><span class="prompt">$</span><span class="text" id="r1">sudo ufw allow OpenSSH &amp;&amp; sudo ufw deny 3306 &amp;&amp; sudo ufw enable</span><button class="copy" data-copy="#r1">Copy</button></div>
+      </div>
+      <div class="card">
+        <h3>2. A database user for dbk</h3>
+        <p>Through SSH, MySQL sees dbk as <code>127.0.0.1</code>:</p>
+        <div class="cmd"><span class="text" id="r2">CREATE USER 'dbk'@'127.0.0.1' IDENTIFIED BY 'strong-password'; GRANT SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES ON shop.* TO 'dbk'@'127.0.0.1';</span><button class="copy" data-copy="#r2">Copy</button></div>
+        <p>For stored procedures also grant <code>SHOW_ROUTINE ON *.*</code> (MySQL 8) or <code>SELECT ON mysql.proc</code> (MariaDB). To restore with dbk, grant <code>ALL PRIVILEGES ON shop.*</code> instead.</p>
+      </div>
+      <div class="card">
+        <h3>3. An SSH account just for backups</h3>
+        <div class="cmd"><span class="prompt">$</span><span class="text" id="r3">sudo adduser --disabled-password --gecos "" dbkbackup</span><button class="copy" data-copy="#r3">Copy</button></div>
+        <p>On the dbk machine, make a key with <code>ssh-keygen -t ed25519 -f ~/.ssh/dbk_vps -N ''</code>. Then add it to <code>/home/dbkbackup/.ssh/authorized_keys</code> on the VPS as one line:</p>
+        <div class="cmd"><span class="text" id="r4">restrict,port-forwarding,permitopen="127.0.0.1:3306" ssh-ed25519 AAAA… dbk</span><button class="copy" data-copy="#r4">Copy</button></div>
+      </div>
+      <div class="card">
+        <h3>4. Add the job in dbk</h3>
+        <ul class="check">
+          <li><span><strong>Server Connection:</strong> host <code>127.0.0.1</code>, port <code>3306</code>, user <code>dbk</code>, TLS off (SSH already encrypts).</span></li>
+          <li><span><strong>SSH Tunnel:</strong> your VPS address, user <code>dbkbackup</code>, key <code>~/.ssh/dbk_vps</code>.</span></li>
+          <li><span>Press <kbd>t</kbd> to test. If the databases list on the next step, the tunnel works.</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note"><span class="ic">🧰</span><p><strong>The computer running dbk still needs the client tools</strong> (<code>mysqldump</code>, <code>pg_dump</code>, <code>mongodump</code>), even when the database is remote. You don't need a database server there, only the tools. For a MariaDB server, install the MariaDB client.</p></div>
+  </div>
+</section>
+
 <!-- ================= SECURITY ================= -->
-<section id="security" style="background: var(--bg-soft);">
+<section id="security">
   <div class="wrap">
     <div class="section-head">
       <p class="eyebrow">Security</p>
@@ -858,7 +938,7 @@ default local storage "local" -> /home/you/dbk-backups
       <div class="card">
         <div class="big-ic">🙈</div>
         <h3>Passwords stay hidden</h3>
-        <p>Database passwords go to the dump tools through environment variables, never the command line, so other users can't see them in <code>ps</code>. Schedule scripts don't contain your key.</p>
+        <p>Database passwords go to the dump tools through environment variables, never the command line, so other users can't see them in <code>ps</code>. SSH keys and passwords live in the same encrypted vault. Schedule scripts don't contain your key.</p>
       </div>
       <div class="card">
         <div class="big-ic">📂</div>
@@ -903,7 +983,7 @@ default local storage "local" -> /home/you/dbk-backups
 </section>
 
 <!-- ================= HELP ================= -->
-<section id="help">
+<section id="help" style="background: var(--bg-soft);">
   <div class="wrap">
     <div class="section-head">
       <p class="eyebrow">Help</p>
@@ -915,12 +995,25 @@ default local storage "local" -> /home/you/dbk-backups
         <div class="ans">
           <p>Open the job's log — every scheduled run writes its start, result and any error there:</p>
           <div class="cmd"><span class="prompt">$</span><span class="text" id="f1">tail -n 30 ~/.config/dbk/logs/shop.log</span><button class="copy" data-copy="#f1">Copy</button></div>
+          <p>On a Mac the log is in <code>~/Library/Application Support/dbk/logs/</code>.</p>
           <p>If the log has nothing new, check the schedule is installed with <code>dbk schedule status shop</code>. In <strong>Schedules</strong>, a ⚠ next to a job means it's saved but not installed — press <kbd>Enter</kbd> on it to fix.</p>
         </div>
       </details>
       <details>
-        <summary>"required client tool not found"</summary>
-        <div class="ans"><p>dbk uses the database's own dump tools. Install them on the server: <code>mariadb-client</code> or <code>mysql-client</code> (MySQL/MariaDB), <code>postgresql-client</code> (PostgreSQL), <code>mongodb-database-tools</code> (MongoDB), <code>sqlite3</code> (SQLite). cPanel servers already have the MySQL tools.</p></div>
+        <summary>"client tools are not installed on this computer"</summary>
+        <div class="ans"><p>dbk uses the database's own dump tools, and the message names the missing tool and the command to install it. dbk checks before it starts, and the job list marks affected jobs with <strong>⚠ tools missing</strong>. Install them on the computer running dbk: <code>mariadb-client</code> or <code>mysql-client</code> (MySQL/MariaDB), <code>postgresql-client</code> (PostgreSQL), <code>mongodb-database-tools</code> (MongoDB), <code>sqlite3</code> (SQLite). On a Mac: <code>brew install mysql-client</code> or <code>libpq</code>. cPanel servers already have the MySQL tools.</p></div>
+      </details>
+      <details>
+        <summary>Do I need MySQL installed to back up a remote database?</summary>
+        <div class="ans"><p>You don't need a MySQL <em>server</em>, but the computer running dbk needs the MySQL/MariaDB <em>client tools</em> (<code>mysql</code>, <code>mysqldump</code>), even for a remote database or one reached through SSH. Use the client that matches the server: the MariaDB client for MariaDB, the MySQL client for MySQL.</p></div>
+      </details>
+      <details>
+        <summary>"SSL is required but the server doesn't support it"</summary>
+        <div class="ans"><p><strong>Use TLS</strong> is on, but the database server has SSL turned off. Edit the job (<kbd>e</kbd>) and untick <strong>Use TLS</strong>. Better still, connect <a href="#remote">through SSH</a>, which encrypts the connection without needing SSL on the database.</p></div>
+      </details>
+      <details>
+        <summary>"unknown host key" when using SSH</summary>
+        <div class="ans"><p>dbk only connects to an SSH server it can identify. Edit and save the job in the app to pin the server's key, or log in once with <code>ssh user@server</code> so it's added to <code>~/.ssh/known_hosts</code>. The error shows the fingerprint, which you can also set as <code>ssh.host_key</code> in the job.</p></div>
       </details>
       <details>
         <summary>The storage test failed</summary>
@@ -962,6 +1055,7 @@ default local storage "local" -> /home/you/dbk-backups
         <div class="ans">
           <p>This removes all schedules, settings and the program. Your backup files in <code>~/dbk-backups</code> and buckets are not deleted.</p>
           <div class="cmd"><span class="prompt">$</span><span class="text" id="f8">dbk uninstall --all --yes</span><button class="copy" data-copy="#f8">Copy</button></div>
+          <p>In the app, use <strong>Settings → Clean Uninstall</strong>. dbk closes and prints what it removed, and anything it couldn't remove along with the reason. On a Mac, if removing a schedule says "Operation not permitted", give your terminal app Full Disk Access (System Settings → Privacy &amp; Security) and run it again.</p>
         </div>
       </details>
     </div>
@@ -995,6 +1089,12 @@ default local storage "local" -> /home/you/dbk-backups
         <h3>Settings backup &amp; moving servers</h3>
         <div class="cli-row"><span>Save jobs, storages, passwords and encryption keys (asks for a passphrase)</span><div class="cmd"><span class="text" id="k9">dbk config export ~/dbk-settings-backup.yaml --include-secrets</span><button class="copy" data-copy="#k9">Copy</button></div></div>
         <div class="cli-row"><span>Import on the new server (asks for that passphrase)</span><div class="cmd"><span class="text" id="k10">dbk config import dbk-settings-backup.yaml</span><button class="copy" data-copy="#k10">Copy</button></div></div>
+      </div>
+      <div class="card">
+        <h3>Remote databases (SSH)</h3>
+        <div class="cli-row"><span>Store the job's SSH key in the vault</span><div class="cmd"><span class="text" id="k13">dbk secret set job/shop/ssh_key --stdin &lt; ~/.ssh/dbk_vps</span><button class="copy" data-copy="#k13">Copy</button></div></div>
+        <div class="cli-row"><span>Or an SSH password / key passphrase</span><div class="cmd"><span class="text" id="k14">dbk secret set job/shop/ssh_password --stdin</span><button class="copy" data-copy="#k14">Copy</button></div></div>
+        <div class="cli-row"><span>Test the connection through the tunnel</span><div class="cmd"><span class="text" id="k15">dbk test shop</span><button class="copy" data-copy="#k15">Copy</button></div></div>
       </div>
       <div class="card">
         <h3>Maintenance</h3>
